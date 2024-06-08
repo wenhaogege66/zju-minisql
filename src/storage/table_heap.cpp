@@ -3,7 +3,43 @@
 /**
  * TODO: Student Implement
  */
-bool TableHeap::InsertTuple(Row &row, Txn *txn) { return false; }
+bool TableHeap::InsertTuple(Row &row, Txn *txn) {
+  page_id_t current_page_id=first_page_id_;
+  auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(current_page_id));
+  if (page == nullptr) {
+    return false;
+  }
+  if(page->InsertTuple(row,schema_,txn,lock_manager_,log_manager_)){
+    return  true;
+  }else{
+    page_id_t last_page_id=current_page_id;
+    while (1)
+    {
+      current_page_id=page->GetNextPageId();
+      if(current_page_id<=0){
+        auto new_page = reinterpret_cast<TablePage *>(buffer_pool_manager_->NewPage(current_page_id));
+        new_page->Init(current_page_id,last_page_id,log_manager_,txn);
+        if(new_page->InsertTuple(row,schema_,txn,lock_manager_,log_manager_)){
+          return  true;
+        }else{
+          last_page_id=current_page_id;
+          continue;
+        }
+      }else{
+        auto new_page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(current_page_id));
+        if(new_page==nullptr){
+          return false;
+        }
+        if(new_page->InsertTuple(row,schema_,txn,lock_manager_,log_manager_)){
+          return  true;
+        }else{
+          last_page_id=current_page_id;
+          continue;
+        }
+      }
+    }
+  }
+}
 
 bool TableHeap::MarkDelete(const RowId &rid, Txn *txn) {
   // Find the page which contains the tuple.
@@ -23,7 +59,21 @@ bool TableHeap::MarkDelete(const RowId &rid, Txn *txn) {
 /**
  * TODO: Student Implement
  */
-bool TableHeap::UpdateTuple(Row &row, const RowId &rid, Txn *txn) { return false; }
+bool TableHeap::UpdateTuple(Row &row, const RowId &rid, Txn *txn) {
+  auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(rid.GetPageId()));
+  if (page == nullptr) {
+    return false;
+  }
+  Row *old_row;
+  old_row->SetRowId(rid);
+  if(!page->GetTuple(old_row,schema_,txn,lock_manager_)){
+    return  false;
+  }
+  if(page->UpdateTuple(row,old_row,schema_,txn,lock_manager_,log_manager_)){
+    return  false;
+  }
+  return  true;
+}
 
 /**
  * TODO: Student Implement
@@ -31,11 +81,17 @@ bool TableHeap::UpdateTuple(Row &row, const RowId &rid, Txn *txn) { return false
 void TableHeap::ApplyDelete(const RowId &rid, Txn *txn) {
   // Step1: Find the page which contains the tuple.
   // Step2: Delete the tuple from the page.
+  auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(rid.GetPageId()));
+  if (page == nullptr) {
+  }
+  page->ApplyDelete(rid,txn,log_manager_);
 }
 
 void TableHeap::RollbackDelete(const RowId &rid, Txn *txn) {
   // Find the page which contains the tuple.
   auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(rid.GetPageId()));
+  if (page == nullptr) {
+  }
   assert(page != nullptr);
   // Rollback to delete.
   page->WLatch();
@@ -47,7 +103,14 @@ void TableHeap::RollbackDelete(const RowId &rid, Txn *txn) {
 /**
  * TODO: Student Implement
  */
-bool TableHeap::GetTuple(Row *row, Txn *txn) { return false; }
+bool TableHeap::GetTuple(Row *row, Txn *txn) {
+  auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(row->GetRowId().GetPageId()));
+  if (page == nullptr) {
+    return false;
+  }
+  page->GetTuple(row,schema_,txn,lock_manager_);
+  return  true;
+}
 
 void TableHeap::DeleteTable(page_id_t page_id) {
   if (page_id != INVALID_PAGE_ID) {
@@ -64,9 +127,18 @@ void TableHeap::DeleteTable(page_id_t page_id) {
 /**
  * TODO: Student Implement
  */
-TableIterator TableHeap::Begin(Txn *txn) { return TableIterator(nullptr, RowId(), nullptr); }
+TableIterator TableHeap::Begin(Txn *txn) { return TableIterator(nullptr, RowId(first_page_id_), nullptr); }
 
 /**
  * TODO: Student Implement
  */
-TableIterator TableHeap::End() { return TableIterator(nullptr, RowId(), nullptr); }
+TableIterator TableHeap::End() {
+  page_id_t last_page_id=first_page_id_;
+  while(1){
+    auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(last_page_id));
+    if (page == nullptr) {
+      break;
+    }
+  }
+  return TableIterator(nullptr, RowId(last_page_id), nullptr);
+}
