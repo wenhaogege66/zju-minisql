@@ -327,19 +327,19 @@ void BPlusTree::InsertIntoParent(BPlusTreePage *old_node, GenericKey *key, BPlus
  * necessary.
  */
 //maybe wrong
-void BPlusTree::Remove(const GenericKey *key, Txn *transaction) {
-  if(IsEmpty())return;
-  auto leaf_node = reinterpret_cast<LeafPage *> (FindLeafPage(key, root_page_id_, false) -> GetData());
-  int siz = leaf_node -> GetSize();
-  int siz2 = leaf_node ->RemoveAndDeleteRecord(key, processor_);
-  if(siz > siz2){
-    CoalesceOrRedistribute(leaf_node, transaction);
-    buffer_pool_manager_ ->UnpinPage(leaf_node -> GetPageId(), true);
-  }
-  else{// Failed delete
-    buffer_pool_manager_ ->UnpinPage(leaf_node -> GetPageId(), false);
-  }
-}
+//void BPlusTree::Remove(const GenericKey *key, Txn *transaction) {
+//  if(IsEmpty())return;
+//  auto leaf_node = reinterpret_cast<LeafPage *> (FindLeafPage(key, root_page_id_, false) -> GetData());
+//  int siz = leaf_node -> GetSize();
+//  int siz2 = leaf_node ->RemoveAndDeleteRecord(key, processor_);
+//  if(siz > siz2){
+//    CoalesceOrRedistribute(leaf_node, transaction);
+//    buffer_pool_manager_ ->UnpinPage(leaf_node -> GetPageId(), true);
+//  }
+//  else{// Failed delete
+//    buffer_pool_manager_ ->UnpinPage(leaf_node -> GetPageId(), false);
+//  }
+//}
 
 void BPlusTree::Remove(const GenericKey *key, Txn *transaction) {
   if(IsEmpty()) return;
