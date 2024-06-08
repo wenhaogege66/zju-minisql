@@ -40,19 +40,11 @@ Column::Column(const Column *other)
  */
 uint32_t Column::SerializeTo(char *buf) const {
   // replace with your code here
-  MACH_WRITE_INT32(buf,type_);
-  MACH_WRITE_UINT32(buf+4,len_);
-  MACH_WRITE_UINT32(buf+8,table_ind_);
+  MACH_WRITE_UINT32(buf, COLUMN_MAGIC_NUM);
+  MACH_WRITE_INT32(buf+4,type_);
+  MACH_WRITE_UINT32(buf+8,len_);
+  MACH_WRITE_UINT32(buf+12,table_ind_);
   switch (nullable_)
-  {
-    case false:
-      MACH_WRITE_INT32(buf+12,0);
-      break;
-    default:
-      MACH_WRITE_INT32(buf+12,1);
-      break;
-  }
-  switch (unique_)
   {
     case false:
       MACH_WRITE_INT32(buf+16,0);
@@ -61,9 +53,18 @@ uint32_t Column::SerializeTo(char *buf) const {
       MACH_WRITE_INT32(buf+16,1);
       break;
   }
+  switch (unique_)
+  {
+    case false:
+      MACH_WRITE_INT32(buf+20,0);
+      break;
+    default:
+      MACH_WRITE_INT32(buf+20,1);
+      break;
+  }
   int name_len=sizeof(name_);
-  MACH_WRITE_INT32(buf+20,name_len);
-  MACH_WRITE_STRING(buf+24,name_);
+  MACH_WRITE_INT32(buf+24,name_len);
+  MACH_WRITE_STRING(buf+28,name_);
   return GetSerializedSize();
 }
 
@@ -72,8 +73,8 @@ uint32_t Column::SerializeTo(char *buf) const {
  */
 uint32_t Column::GetSerializedSize() const {
   // replace with your code here
-//  uint32_t  size=sizeof(name_)+24;
-  uint32_t  size=name_.length() + 18 + sizeof(TypeId);;
+  uint32_t  size=sizeof(name_)+28;
+  //uint32_t  size=name_.length() + 18 + sizeof(TypeId);;
 
   return size;
 }
@@ -86,29 +87,31 @@ uint32_t Column::DeserializeFrom(char *buf, Column *&column) {
     LOG(WARNING) << "Pointer to column is not null in column deserialize." 									 << std::endl;
   }
   /* deserialize field from buf */
-  int tp=MACH_READ_INT32(buf);
+  uint32_t magic_num = MACH_READ_UINT32(buf);
+  ASSERT(magic_num == COLUMN_MAGIC_NUM, "Failed to deserialize table info.");
+  int tp=MACH_READ_INT32(buf+4);
   TypeId  type=(enum  TypeId)tp;
-  uint32_t col_len=MACH_READ_UINT32(buf+4);
-  uint32_t col_ind=MACH_READ_UINT32(buf+8);
+  uint32_t col_len=MACH_READ_UINT32(buf+8);
+  uint32_t col_ind=MACH_READ_UINT32(buf+12);
   int temp;
   bool  nullable;
-  temp=MACH_READ_INT32(buf+12);
+  temp=MACH_READ_INT32(buf+16);
   if(temp==1){
     nullable=true;
   }else{
     nullable=false;
   }
   bool  unique;
-  temp=MACH_READ_INT32(buf+16);
+  temp=MACH_READ_INT32(buf+20);
   if(temp==1){
     unique=true;
   }else{
     unique=false;
   }
-  uint32_t name_len=MACH_READ_INT32(buf+20);
-  uint32_t  ofs=24+name_len;
+  int32_t name_len=MACH_READ_INT32(buf+24);
+  uint32_t  ofs=28+name_len;
   std::string column_name;
-  column_name.assign(buf+24,name_len);
+  column_name.assign(buf+28,name_len);
   /* allocate object */
   if (type == kTypeChar) {
     column = new Column(column_name, type, col_len, col_ind, nullable, unique);
