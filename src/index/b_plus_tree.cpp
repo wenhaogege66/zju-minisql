@@ -682,8 +682,7 @@ Page *BPlusTree::FindLeafPage(const GenericKey *key, page_id_t page_id, bool lef
     }
     buffer_pool_manager_->UnpinPage(cur_page_id, false);
     root_node = buffer_pool_manager_->FetchPage(child_page_id);
-    Page * child_node = buffer_pool_manager_->FetchPage(child_page_id);
-    cur_page = reinterpret_cast<BPlusTreePage *>(child_node->GetData());
+    cur_page = reinterpret_cast<BPlusTreePage *>(root_node->GetData());
   }
   // 是叶子节点,退出循环
   return root_node;
