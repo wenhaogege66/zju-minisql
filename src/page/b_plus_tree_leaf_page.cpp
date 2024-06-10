@@ -24,6 +24,7 @@
 void LeafPage::Init(page_id_t page_id, page_id_t parent_id, int key_size, int max_size) {
   SetPageId(page_id);
   SetParentPageId(parent_id);
+  SetPageType(IndexPageType::LEAF_PAGE);
   SetKeySize(key_size);
   SetMaxSize(max_size);
   SetSize(0);
@@ -52,8 +53,8 @@ void LeafPage::SetNextPageId(page_id_t next_page_id) {
  * 二分查找
  */
 int LeafPage::KeyIndex(const GenericKey *key, const KeyManager &KM) {
-  int left=0;
-  int right=GetSize()-1;
+  int left=-1;
+  int right=GetSize();
   while(right-left>1){
     int   middle=(left+right)/2;
     if(KM.CompareKeys(key,KeyAt(middle))>=0){
@@ -109,7 +110,7 @@ std::pair<GenericKey *, RowId> LeafPage::GetItem(int index) { return {KeyAt(inde
 int LeafPage::Insert(GenericKey *key, const RowId &value, const KeyManager &KM) {
   int   size=GetSize()+1;
   int   index=KeyIndex(key,KM);
-  PairCopy(PairPtrAt(index+1),PairPtrAt(index),size-index);
+  PairCopy(PairPtrAt(index+1),PairPtrAt(index),GetSize()-index);
   SetValueAt(index,value);
   SetKeyAt(index,key);
   SetSize(size);
@@ -123,9 +124,16 @@ int LeafPage::Insert(GenericKey *key, const RowId &value, const KeyManager &KM) 
  * Remove half of key & value pairs from this page to "recipient" page
  */
 void LeafPage::MoveHalfTo(LeafPage *recipient) {
-  int   new_size=GetSize()/2;
+  int   new_size;
+  if(IsRootPage()){
+    new_size=GetMinSize()/2;
+  }else{
+    new_size=GetMaxSize()/2;
+  }
   SetSize(new_size);
   recipient->CopyNFrom(PairPtrAt(new_size),GetSize()-new_size);
+  //recipient->SetNextPageId(GetNextPageId());
+  //SetNextPageId(recipient->GetPageId());
 }
 
 /*
@@ -211,6 +219,7 @@ int LeafPage::RemoveAndDeleteRecord(const GenericKey *key, const KeyManager &KM)
  */
 void LeafPage::MoveAllTo(LeafPage *recipient) {
   recipient->PairCopy(recipient->PairPtrAt(recipient->GetSize()),PairPtrAt(0),GetSize());
+  recipient->SetNextPageId(GetNextPageId());
   SetSize(0);
 }
 

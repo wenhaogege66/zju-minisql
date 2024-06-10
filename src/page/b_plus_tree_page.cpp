@@ -18,7 +18,7 @@ bool BPlusTreePage::IsLeafPage() const {
  * TODO: Student Implement
  */
 bool BPlusTreePage::IsRootPage() const {
-  if(page_type_== IndexPageType::INVALID_INDEX_PAGE){
+  if(parent_page_id_==INVALID_PAGE_ID){
     return  true;
   }
   return false;

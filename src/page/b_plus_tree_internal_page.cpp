@@ -21,6 +21,7 @@
 void InternalPage::Init(page_id_t page_id, page_id_t parent_id, int key_size, int max_size){
   SetPageId(page_id);
   SetParentPageId(parent_id);
+  SetPageType(IndexPageType::INTERNAL_PAGE);
   SetKeySize(key_size);
   SetMaxSize(max_size);
   SetSize(0);
@@ -70,21 +71,18 @@ void InternalPage::PairCopy(void *dest, void *src, int pair_num) {
  * 用了二分查找
  */
 page_id_t InternalPage::Lookup(const GenericKey *key, const KeyManager &KM) {
-  int right=GetSize()-1;
+  int right=GetSize();
   int left=0;
   while(right-left>1){
     int   middle=(left+right)/2;
-    if(KM.CompareKeys(key,KeyAt(middle))==0){
-      return  ValueAt(middle);
-    }
     if(KM.CompareKeys(key,KeyAt(middle))>0){
-      left=middle;
-    }
-    if(KM.CompareKeys(key,KeyAt(middle))<0){
       right=middle;
     }
+    if(KM.CompareKeys(key,KeyAt(middle))<=0){
+      left=middle;
+    }
   }
-  return ValueAt(right);
+  return ValueAt(left);
 }
 
 /*****************************************************************************
@@ -111,10 +109,7 @@ void InternalPage::PopulateNewRoot(const page_id_t &old_value, GenericKey *new_k
 int InternalPage::InsertNodeAfter(const page_id_t &old_value, GenericKey *new_key, const page_id_t &new_value) {
   int i=ValueIndex(old_value);
   int new_size=GetSize()+1;
-  for(int j=new_size;j>i+1;j++){
-    SetKeyAt(j,KeyAt(j-1));
-    SetValueAt(j,ValueAt(j-1));
-  }
+  PairCopy(PairPtrAt(i),PairPtrAt(i+1),GetSize()-i);
   // move back one place
   SetKeyAt(i+1,new_key);
   SetValueAt(i+1,new_value);
@@ -254,10 +249,7 @@ void InternalPage::MoveLastToFrontOf(InternalPage *recipient, GenericKey *middle
 void InternalPage::CopyFirstFrom(const page_id_t value, BufferPoolManager *buffer_pool_manager) {
     int size=GetSize()+1;
     SetSize(size);
-    for(int i=size;i>0;--i){
-      SetKeyAt(i,KeyAt(i-1));
-      SetValueAt(i,ValueAt(i-1));
-    }
+    PairCopy(PairPtrAt(1),PairPtrAt(0),size-1);
     SetValueAt(0,value);
     auto  child_page=reinterpret_cast<InternalPage *>(buffer_pool_manager->FetchPage(value));
     child_page->SetParentPageId(GetPageId());
