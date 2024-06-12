@@ -412,13 +412,13 @@ IndexIterator BPlusTree::End() {
     auto node = reinterpret_cast<LeafPage *>(root);
     auto endleaf = FindLeafPage(node ->KeyAt(node -> GetSize() - 1),root_page_id_);
     buffer_pool_manager_ ->UnpinPage(root_page_id_, false);
-    return IndexIterator(endleaf -> GetPageId(), buffer_pool_manager_, node -> GetSize() - 1);
+    return IndexIterator(endleaf -> GetPageId(), buffer_pool_manager_, node -> GetSize() );
   }
   else{
     auto node = reinterpret_cast<InternalPage *>(root);
     auto endleaf = FindLeafPage(node ->KeyAt(node -> GetSize() - 1),root_page_id_);
     buffer_pool_manager_ ->UnpinPage(root_page_id_, false);
-    return IndexIterator(endleaf -> GetPageId(), buffer_pool_manager_, node -> GetSize() - 1);
+    return IndexIterator(endleaf -> GetPageId(), buffer_pool_manager_, node -> GetSize() );
   }
 }
 

@@ -22,18 +22,17 @@ std::pair<GenericKey *, RowId> IndexIterator::operator*() {
 IndexIterator &IndexIterator::operator++() {
   item_index++;
   if(item_index >= page -> GetSize()){
-    page_id_t nxt_id = page -> GetNextPageId();
-    if(nxt_id == INVALID_PAGE_ID){
+    page_id_t next_id = page -> GetNextPageId();
+    if(next_id == INVALID_PAGE_ID){
       page = nullptr;
-      current_page_id = INVALID_PAGE_ID;
-      item_index = 0;
+      //current_page_id = INVALID_PAGE_ID;
     }
     else{
-      auto nxt_page = reinterpret_cast<LeafPage *> (buffer_pool_manager->FetchPage(nxt_id) -> GetData());
-      page = nxt_page;
-      current_page_id = nxt_id;
+      auto next_page = reinterpret_cast<LeafPage *> (buffer_pool_manager->FetchPage(next_id) -> GetData());
+      page = next_page;
+      current_page_id = next_id;
       item_index = 0;
-      buffer_pool_manager ->UnpinPage(page -> GetPageId(), false);
+      buffer_pool_manager ->UnpinPage(next_id, false);
     }
   }
 }
