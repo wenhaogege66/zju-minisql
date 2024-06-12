@@ -54,6 +54,7 @@ TEST(BPlusTreeTests, BPlusTreeIndexSimpleTest) {
     Row row(fields);
     RowId rid(1000, i);
     ASSERT_EQ(DB_SUCCESS, index->InsertEntry(row, rid, nullptr));
+
   }
   // Test Scan
   std::vector<RowId> ret;

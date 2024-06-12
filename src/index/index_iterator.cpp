@@ -21,19 +21,20 @@ std::pair<GenericKey *, RowId> IndexIterator::operator*() {
 
 IndexIterator &IndexIterator::operator++() {
   item_index++;
-  if(item_index-page->GetSize()>=0){
-    page_id_t next=page->GetNextPageId();
-    if(next==INVALID_PAGE_ID){
-      page==nullptr;
-      current_page_id=INVALID_PAGE_ID;
-      item_index=0;
-    }else{
-    auto  new_page=reinterpret_cast<LeafPage *> (buffer_pool_manager->FetchPage(next) -> GetData());
-    buffer_pool_manager->UnpinPage(current_page_id,false);
-    page=new_page;
-    current_page_id =next;
-    item_index=0;
-  }
+  if(item_index >= page -> GetSize()){
+    page_id_t nxt_id = page -> GetNextPageId();
+    if(nxt_id == INVALID_PAGE_ID){
+      page = nullptr;
+      current_page_id = INVALID_PAGE_ID;
+      item_index = 0;
+    }
+    else{
+      auto nxt_page = reinterpret_cast<LeafPage *> (buffer_pool_manager->FetchPage(nxt_id) -> GetData());
+      page = nxt_page;
+      current_page_id = nxt_id;
+      item_index = 0;
+      buffer_pool_manager ->UnpinPage(page -> GetPageId(), false);
+    }
   }
 }
 
