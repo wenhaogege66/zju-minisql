@@ -22,12 +22,13 @@
  * 未初始化next_page_id
  */
 void LeafPage::Init(page_id_t page_id, page_id_t parent_id, int key_size, int max_size) {
-  SetPageId(page_id);
-  SetParentPageId(parent_id);
-  SetPageType(IndexPageType::LEAF_PAGE);
-  SetKeySize(key_size);
-  SetMaxSize(max_size);
-  SetSize(0);
+    SetNextPageId(INVALID_PAGE_ID);
+    SetPageType(IndexPageType::LEAF_PAGE);
+    SetSize(0);
+    SetMaxSize(max_size);
+    SetParentPageId(parent_id);
+    SetPageId(page_id);
+    SetKeySize(key_size);
 }
 
 /**
@@ -39,9 +40,6 @@ page_id_t LeafPage::GetNextPageId() const {
 
 void LeafPage::SetNextPageId(page_id_t next_page_id) {
   next_page_id_ = next_page_id;
-  if (next_page_id == 0) {
-    LOG(INFO) << "Fatal error";
-  }
 }
 
 /**
@@ -53,18 +51,21 @@ void LeafPage::SetNextPageId(page_id_t next_page_id) {
  * 二分查找
  */
 int LeafPage::KeyIndex(const GenericKey *key, const KeyManager &KM) {
-  int left=-1;
-  int right=GetSize();
-  while(right-left>1){
-    int   middle=(left+right)/2;
-    if(KM.CompareKeys(key,KeyAt(middle))>=0){
-      left=middle;
-    }
-    if(KM.CompareKeys(key,KeyAt(middle))<0){
-      right=middle;
+  if(GetSize() == 0)return 0;
+  int left = 0;
+  int right = GetSize()-1;
+  while(left<=right){
+    int middle = (left+right) / 2;
+    int cmp = KM.CompareKeys(key, KeyAt(middle));
+    if(cmp == 0){
+      return middle;
+    }else if(cmp > 0){
+      left = middle + 1;
+    }else {
+      right = middle - 1;
     }
   }
-  return  right;
+  return right + 1;
 }
 
 /*
@@ -124,14 +125,9 @@ int LeafPage::Insert(GenericKey *key, const RowId &value, const KeyManager &KM) 
  * Remove half of key & value pairs from this page to "recipient" page
  */
 void LeafPage::MoveHalfTo(LeafPage *recipient) {
-  int   new_size;
-  if(IsRootPage()){
-    new_size=GetMinSize()/2;
-  }else{
-    new_size=GetMaxSize()/2;
-  }
-  SetSize(new_size);
-  recipient->CopyNFrom(PairPtrAt(new_size),GetSize()-new_size);
+  int   moved=GetSize()/2;
+  recipient->CopyNFrom(PairPtrAt(GetSize()-moved),moved);
+  SetSize(GetSize()-moved);
   //recipient->SetNextPageId(GetNextPageId());
   //SetNextPageId(recipient->GetPageId());
 }
@@ -153,22 +149,15 @@ void LeafPage::CopyNFrom(void *src, int size) {
  * If the key does not exist, then return false
  */
 bool LeafPage::Lookup(const GenericKey *key, RowId &value, const KeyManager &KM) {
-  int   left=0;
-  int   right=GetSize()-1;
-  while(right-left>1){
-    int   middle=(left+right)/2;
-    if(KM.CompareKeys(key,KeyAt(middle))==0){
-      value=ValueAt(middle);
-      return  true;
-    }
-    if(KM.CompareKeys(key,KeyAt(middle))>0){
-      left=middle;
-    }
-    if(KM.CompareKeys(key,KeyAt(middle))<0){
-      right=middle;
-    }
+  int index = KeyIndex(key, KM);
+  if(index<GetSize()){
+    return false;
   }
-  return  false;
+  if(KM.CompareKeys(key, KeyAt(index)) == 0){
+    value = ValueAt(index);
+    return true;
+  }
+  return false;
 }
 
 /*****************************************************************************
@@ -205,7 +194,10 @@ int LeafPage::RemoveAndDeleteRecord(const GenericKey *key, const KeyManager &KM)
     return  GetSize();
   }
   //exist
-  PairCopy(PairPtrAt(index),PairPtrAt(index+1),GetSize()-index-1);
+  for(int i=index;i<GetSize();i++){
+    SetKeyAt(i,KeyAt(i+1));
+    SetValueAt(i,ValueAt(i+1));
+  }
   SetSize(GetSize()-1);
   return  GetSize();
 }
@@ -218,8 +210,8 @@ int LeafPage::RemoveAndDeleteRecord(const GenericKey *key, const KeyManager &KM)
  * to update the next_page id in the sibling page
  */
 void LeafPage::MoveAllTo(LeafPage *recipient) {
-  recipient->PairCopy(recipient->PairPtrAt(recipient->GetSize()),PairPtrAt(0),GetSize());
-  recipient->SetNextPageId(GetNextPageId());
+  recipient->CopyNFrom(PairPtrAt(0),GetSize());
+  //recipient->SetNextPageId(GetNextPageId());
   SetSize(0);
 }
 
@@ -232,7 +224,7 @@ void LeafPage::MoveAllTo(LeafPage *recipient) {
  */
 void LeafPage::MoveFirstToEndOf(LeafPage *recipient) {
   recipient->CopyLastFrom(KeyAt(0),ValueAt(0));
-  PairCopy(PairPtrAt(0),PairPtrAt(1),GetSize()-1);
+  PairCopy(PairPtrAt(0), PairPtrAt(1), GetSize() - 1);
   SetSize(GetSize()-1);
 }
 
@@ -258,7 +250,7 @@ void LeafPage::MoveLastToFrontOf(LeafPage *recipient) {
  *
  */
 void LeafPage::CopyFirstFrom(GenericKey *key, const RowId value) {
-  PairCopy(PairPtrAt(1),PairPtrAt(0),GetSize());
+  PairCopy(PairPtrAt(1), PairPtrAt(0), GetSize());
   SetSize(GetSize()+1);
   SetKeyAt(0,key);
   SetValueAt(0,value);

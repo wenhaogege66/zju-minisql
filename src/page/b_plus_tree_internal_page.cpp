@@ -71,18 +71,21 @@ void InternalPage::PairCopy(void *dest, void *src, int pair_num) {
  * 用了二分查找
  */
 page_id_t InternalPage::Lookup(const GenericKey *key, const KeyManager &KM) {
-  int right=GetSize();
-  int left=0;
-  while(right-left>1){
+  int right=GetSize()-1;
+  int left=1;
+  while(right-left>=0){
     int   middle=(left+right)/2;
-    if(KM.CompareKeys(key,KeyAt(middle))>0){
-      right=middle;
+    if(KM.CompareKeys(key,KeyAt(middle))==0){
+      return  ValueAt(middle);
     }
-    if(KM.CompareKeys(key,KeyAt(middle))<=0){
-      left=middle;
+    if(KM.CompareKeys(key,KeyAt(middle))>0){
+      left=middle+1;
+    }
+    if(KM.CompareKeys(key,KeyAt(middle))<0){
+      right=middle-1;
     }
   }
-  return ValueAt(left);
+  return ValueAt(left-1);
 }
 
 /*****************************************************************************
@@ -107,9 +110,9 @@ void InternalPage::PopulateNewRoot(const page_id_t &old_value, GenericKey *new_k
  * @return:  new size after insertion
  */
 int InternalPage::InsertNodeAfter(const page_id_t &old_value, GenericKey *new_key, const page_id_t &new_value) {
-  int i=ValueIndex(old_value);
+  int i=ValueIndex(old_value)+1;
   int new_size=GetSize()+1;
-  PairCopy(PairPtrAt(i),PairPtrAt(i+1),GetSize()-i);
+  PairCopy(PairPtrAt(i+1),PairPtrAt(i),GetSize()-i);
   // move back one place
   SetKeyAt(i+1,new_key);
   SetValueAt(i+1,new_value);
@@ -141,7 +144,7 @@ void InternalPage::MoveHalfTo(InternalPage *recipient, BufferPoolManager *buffer
 void InternalPage::CopyNFrom(void *src, int size, BufferPoolManager *buffer_pool_manager) {
   int current_size=GetSize();
   SetSize(current_size+size);
-  memcpy(pairs_off+key_off,src,size*(GetKeySize()+sizeof(page_id_t)));
+  PairCopy(PairPtrAt(current_size), src, size);
   //copy the pairs
   for(int i=0;i<size;i++){
     auto  temp_page=reinterpret_cast<InternalPage *>(buffer_pool_manager->FetchPage(ValueAt(i)));
