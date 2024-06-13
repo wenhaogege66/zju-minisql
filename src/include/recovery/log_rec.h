@@ -30,29 +30,44 @@ using ValType = int32_t;
  * TODO: Student Implement
  */
 struct LogRec {
-   // LogRec() = default;
+  LogRec() = default;
 
-    LogRecType type_{LogRecType::kInvalid};
-    lsn_t lsn_{INVALID_LSN};
-    lsn_t prev_lsn_{INVALID_LSN};
-    txn_id_t txn_id_{};
-    KeyType key_{};
-    ValType old_val_{};
-    ValType new_val_{};
+  LogRec(LogRecType type, lsn_t lsn, lsn_t prev_lsn, txn_id_t txn_id): type_(type), lsn_(lsn), prev_lsn_(prev_lsn),
+                                                                        txn_id_(txn_id) {
+                                                                        };
 
-    /* used for testing only */
-    static std::unordered_map<txn_id_t, lsn_t> prev_lsn_map_;
-    static lsn_t next_lsn_;
-     LogRec(txn_id_t txn_id, LogRecType type, KeyType key, ValType old_val, ValType new_val)
-        : type_(type), txn_id_(txn_id), lsn_(next_lsn_++), prev_lsn_(INVALID_LSN),
-          key_(std::move(key)), old_val_(old_val), new_val_(new_val) {
-        if (prev_lsn_map_.find(txn_id) != prev_lsn_map_.end()) {
-            prev_lsn_ = prev_lsn_map_[txn_id];
-        }
-        prev_lsn_map_[txn_id] = lsn_;
+  LogRecType type_{LogRecType::kInvalid};
+  lsn_t lsn_{INVALID_LSN};
+  lsn_t prev_lsn_{INVALID_LSN};
+  txn_id_t txn_id_{INVALID_TXN_ID};
+
+  /* used for testing only */
+  static std::unordered_map<txn_id_t, lsn_t> prev_lsn_map_;
+  static lsn_t next_lsn_;
+
+
+  static lsn_t getprelsnid(txn_id_t txn_id, lsn_t new_id) {
+    auto prev_lsn = prev_lsn_map_.find(txn_id);
+    if (prev_lsn != prev_lsn_map_.end()) {
+      lsn_t ret = prev_lsn->second;
+      prev_lsn->second = new_id;
+      return ret;
+    } else {
+      prev_lsn_map_.emplace(txn_id, new_id);
+      return INVALID_LSN;
     }
+  }
 
-    static constexpr lsn_t INVALID_LSN = -1;
+  KeyType ins_key_;
+  ValType ins_val_;
+
+  KeyType del_key_;
+  ValType del_val_;
+
+  KeyType old_key_;
+  ValType old_val_;
+  KeyType new_key_;
+  ValType new_val_;
 };
 
 std::unordered_map<txn_id_t, lsn_t> LogRec::prev_lsn_map_ = {};
@@ -64,42 +79,63 @@ typedef std::shared_ptr<LogRec> LogRecPtr;
  * TODO: Student Implement
  */
 static LogRecPtr CreateInsertLog(txn_id_t txn_id, KeyType ins_key, ValType ins_val) {
-     return std::make_shared<LogRec>(txn_id, LogRecType::kInsert, std::move(ins_key), 0, ins_val);
+  lsn_t cur_lsn = LogRec::next_lsn_++;
+  LogRecPtr re(new LogRec(LogRecType::kInsert, cur_lsn, LogRec::getprelsnid(txn_id, cur_lsn), txn_id));
+  re->ins_key_ = ins_key;
+  re->ins_val_ = ins_val;
+  return re;
 }
 
 /**
  * TODO: Student Implement
  */
 static LogRecPtr CreateDeleteLog(txn_id_t txn_id, KeyType del_key, ValType del_val) {
-    return std::make_shared<LogRec>(txn_id, LogRecType::kDelete, std::move(del_key), del_val, 0);
+  lsn_t cur_lsn = LogRec::next_lsn_++;
+  LogRecPtr re(new LogRec(LogRecType::kDelete, cur_lsn, LogRec::getprelsnid(txn_id, cur_lsn), txn_id));
+  re->del_key_ = del_key;
+  re->del_val_ = del_val;
+  return re;
 }
 
 /**
  * TODO: Student Implement
  */
 static LogRecPtr CreateUpdateLog(txn_id_t txn_id, KeyType old_key, ValType old_val, KeyType new_key, ValType new_val) {
-     return std::make_shared<LogRec>(txn_id, LogRecType::kUpdate, std::move(old_key), old_val, new_val);
+  lsn_t cur_lsn = LogRec::next_lsn_++;
+  LogRecPtr re(new LogRec(LogRecType::kUpdate, cur_lsn, LogRec::getprelsnid(txn_id, cur_lsn), txn_id));
+  re->old_key_ = old_key;
+  re->old_val_ = old_val;
+  re->new_key_ = new_key;
+  re->new_val_ = new_val;
+  return re;
 }
 
 /**
  * TODO: Student Implement
  */
 static LogRecPtr CreateBeginLog(txn_id_t txn_id) {
-    return std::make_shared<LogRec>(txn_id, LogRecType::kBegin, "", 0, 0);
+  lsn_t cur_lsn = LogRec::next_lsn_++;
+  LogRecPtr re(new LogRec(LogRecType::kBegin, cur_lsn, LogRec::getprelsnid(txn_id, cur_lsn), txn_id));
+  return re;
 }
 
 /**
  * TODO: Student Implement
  */
 static LogRecPtr CreateCommitLog(txn_id_t txn_id) {
-    return std::make_shared<LogRec>(txn_id, LogRecType::kCommit, "", 0, 0);
+  lsn_t cur_lsn = LogRec::next_lsn_++;
+  LogRecPtr re(new LogRec(LogRecType::kCommit, cur_lsn, LogRec::getprelsnid(txn_id, cur_lsn), txn_id));
+  return re;
 }
 
 /**
  * TODO: Student Implement
  */
 static LogRecPtr CreateAbortLog(txn_id_t txn_id) {
-    return std::make_shared<LogRec>(txn_id, LogRecType::kAbort, "", 0, 0);
+  lsn_t cur_lsn = LogRec::next_lsn_++;
+  LogRecPtr re(new LogRec(LogRecType::kAbort, cur_lsn, LogRec::getprelsnid(txn_id, cur_lsn), txn_id));
+  return re;
 }
 
 #endif  // MINISQL_LOG_REC_H
+

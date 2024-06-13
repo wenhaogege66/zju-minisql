@@ -8,11 +8,14 @@
 class TableHeap;
 
 class TableIterator {
-public:
- // you may define your own constructor based on your member variables
- explicit TableIterator(TableHeap *table_heap, RowId rid, Txn *txn);
+ public:
+  // you may define your own constructor based on your member variables
+  explicit TableIterator();
 
- explicit TableIterator(const TableIterator &other);
+  explicit TableIterator(TableHeap *table_heap, Row *row, RowId rid): row(row), table_heap_(table_heap), rowid(rid) {
+  }
+
+  explicit TableIterator(const TableIterator &other);
 
   virtual ~TableIterator();
 
@@ -30,7 +33,10 @@ public:
 
   TableIterator operator++(int);
 
-private:
+ private:
+  Row *row{nullptr};
+  TableHeap *table_heap_{nullptr};
+  RowId rowid{INVALID_PAGE_ID, 0};
   // add your own private member variables here
 };
 

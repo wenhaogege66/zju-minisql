@@ -17,44 +17,68 @@ BPlusTree::BPlusTree(index_id_t index_id, BufferPoolManager *buffer_pool_manager
       processor_(KM),
       leaf_max_size_(leaf_max_size),
       internal_max_size_(internal_max_size) {
+
+  // 如果叶子节点或内部节点的最大尺寸未定义，使用默认计算方法。
   if(leaf_max_size == UNDEFINED_SIZE || internal_max_size == UNDEFINED_SIZE){
-    leaf_max_size_ = (PAGE_SIZE - LEAF_PAGE_HEADER_SIZE)/(processor_.GetKeySize() + sizeof(RowId))-1;
-    internal_max_size_ =  (PAGE_SIZE - INTERNAL_PAGE_HEADER_SIZE)/(processor_.GetKeySize() + sizeof(RowId))-1;
+    // 计算默认的叶子节点最大尺寸：页面大小减去叶子节点头的大小，然后除以每个键值对的大小。
+    leaf_max_size_ = (PAGE_SIZE - LEAF_PAGE_HEADER_SIZE) / (processor_.GetKeySize() + sizeof(RowId)) - 1;
+
+    // 计算默认的内部节点最大尺寸：页面大小减去内部节点头的大小，然后除以每个键-页ID对的大小。
+    internal_max_size_ =  (PAGE_SIZE - INTERNAL_PAGE_HEADER_SIZE) / (processor_.GetKeySize() + sizeof(RowId)) - 1;
+
+    // 确保内部节点的最大尺寸至少为2。
     if(internal_max_size_ < 2) {
       internal_max_size_ = 2, leaf_max_size_ = 2;
     }
   }
-  auto page = reinterpret_cast<IndexRootsPage *> (buffer_pool_manager_ ->FetchPage(INDEX_ROOTS_PAGE_ID) -> GetData());
-  if(page ->GetRootId(index_id_, &root_page_id_) == 0){
+
+  // 从缓冲池管理器中获取索引根页面，并尝试加载根节点ID。
+  auto page = reinterpret_cast<IndexRootsPage *> (buffer_pool_manager_->FetchPage(INDEX_ROOTS_PAGE_ID)->GetData());
+  if(page->GetRootId(index_id_, &root_page_id_) == 0){
+    // 如果根节点ID不存在，设置为无效值。
     root_page_id_ = INVALID_PAGE_ID;
   }
+
+  // 释放根页面和根节点的锁定。
   buffer_pool_manager_->UnpinPage(INDEX_ROOTS_PAGE_ID, true);
   buffer_pool_manager_->UnpinPage(root_page_id_, true);
 }
 
+
 void BPlusTree::Destroy(page_id_t current_page_id) {
+  // 如果B+树为空，直接返回。
   if(IsEmpty())
     return;
+
+  // 如果当前页面ID无效，使用根页面ID并更新根页面ID。
   if(current_page_id == INVALID_PAGE_ID) {
     current_page_id = root_page_id_;
     root_page_id_ = INVALID_PAGE_ID;
-    UpdateRootPageId(2);
+    UpdateRootPageId(2); // 2表示移除根节点。
   }
+
+  // 从缓冲池中获取当前页面的数据并转换为B+树页面。
   auto page = reinterpret_cast<BPlusTreePage *>(buffer_pool_manager_->FetchPage(current_page_id)->GetData());
+
+  // 如果当前页面是内部节点，递归删除其子节点。
   if(!page->IsLeafPage()) {
     auto *inner = reinterpret_cast<InternalPage *>(page);
     for(int i = page->GetSize() - 1; i >= 0; --i) {
       Destroy(inner->ValueAt(i));
     }
   }
+
+  // 删除当前页面并释放缓冲池的锁定。
   buffer_pool_manager_->DeletePage(current_page_id);
   buffer_pool_manager_->UnpinPage(current_page_id, false);
 }
+
 
 /*
  * Helper function to decide whether current b+tree is empty
  */
 bool BPlusTree::IsEmpty() const {
+  // 判断根节点ID是否为无效值，若是则返回true，表示B+树为空。
   if(root_page_id_ == INVALID_PAGE_ID) return true;
   return false;
 }
@@ -68,18 +92,31 @@ bool BPlusTree::IsEmpty() const {
  * @return : true means key exists
  */
 bool BPlusTree::GetValue(const GenericKey *key, std::vector<RowId> &result, Txn *Txn) {
+  // 如果B+树为空，返回false。
   if(IsEmpty()) return false;
+
+  // 找到包含该键的叶子页面。
   auto *page = FindLeafPage(key, root_page_id_, false);
-  auto node = reinterpret_cast<LeafPage  *> (page -> GetData());
+
+  // 获取叶子页面的数据。
+  auto node = reinterpret_cast<LeafPage  *> (page->GetData());
+
+  // 在叶子页面中查找该键的值。
   RowId val;
-  if(node ->Lookup(key, val, processor_)){
+  if(node->Lookup(key, val, processor_)){
+    // 如果找到，添加到结果向量中。
     result.push_back(val);
-    buffer_pool_manager_ ->UnpinPage(node -> GetPageId(), false);
+
+    // 释放叶子页面的锁定，并返回true。
+    buffer_pool_manager_->UnpinPage(node->GetPageId(), false);
     return true;
   }
-  buffer_pool_manager_ ->UnpinPage(node -> GetPageId(), false);
+
+  // 如果未找到，释放叶子页面的锁定，并返回false。
+  buffer_pool_manager_->UnpinPage(node->GetPageId(), false);
   return false;
 }
+
 /*****************************************************************************
  * INSERTION
  *****************************************************************************/
@@ -91,13 +128,16 @@ bool BPlusTree::GetValue(const GenericKey *key, std::vector<RowId> &result, Txn 
  * keys return false, otherwise return true.
  */
 bool BPlusTree::Insert(GenericKey *key, const RowId &value, Txn *transaction) {
+  // 如果B+树为空，创建新的树并插入键值对。
   if(IsEmpty()) {
     StartNewTree(key, value);
     return true;
   } else {
+    // 否则，将键值对插入到合适的叶子页面中。
     return InsertIntoLeaf(key, value, transaction);
   }
 }
+
 /*
  * Insert constant key & value pair into an empty tree
  * User needs to first ask for new page from buffer pool manager(NOTICE: throw
@@ -105,15 +145,22 @@ bool BPlusTree::Insert(GenericKey *key, const RowId &value, Txn *transaction) {
  * tree's root page id and insert entry directly into leaf page.
  */
 void BPlusTree::StartNewTree(GenericKey *key, const RowId &value) {
+  // 从缓冲池管理器请求一个新的页面，并将其作为根页面
   auto new_page = buffer_pool_manager_->NewPage(root_page_id_);
+  // 如果无法分配新的页面，则抛出错误（内存不足）
   ASSERT(new_page != nullptr, "out of memory");
+  // 将新页面的数据部分转换为叶子节点类型
   auto new_node = reinterpret_cast<LeafPage *>(new_page->GetData());
-
-  new_node ->Init(root_page_id_, INVALID_PAGE_ID, processor_.GetKeySize(), leaf_max_size_);
-  new_node ->Insert(key, value, processor_);
+  // 初始化叶子节点，设置其ID、无效的父节点ID、键的大小和最大尺寸
+  new_node->Init(root_page_id_, INVALID_PAGE_ID, processor_.GetKeySize(), leaf_max_size_);
+  // 将第一个键值对插入到新创建的叶子节点中
+  new_node->Insert(key, value, processor_);
+  // 解锁根页面，同时标记该页面已被修改
   buffer_pool_manager_->UnpinPage(root_page_id_, true);
-  UpdateRootPageId(1);
+  // 更新根页面ID信息
+  UpdateRootPageId(1); // 1表示插入新的根页面
 }
+
 
 /*
  * Insert constant key & value pair into leaf page
@@ -124,24 +171,36 @@ void BPlusTree::StartNewTree(GenericKey *key, const RowId &value) {
  * keys return false, otherwise return true.
  */
 bool BPlusTree::InsertIntoLeaf(GenericKey *key, const RowId &value, Txn *transaction) {
+  // 查找包含给定键的叶子页面
+  auto page = reinterpret_cast<LeafPage *>(FindLeafPage(key, root_page_id_, false)->GetData());
+  // 检查该键是否已存在于叶子节点中
   RowId val;
-  auto page = reinterpret_cast <LeafPage *> (FindLeafPage(key, root_page_id_,false)->GetData());
-  if(page ->Lookup(key, val, processor_)) {
+  if (page->Lookup(key, val, processor_)) {
+    // 如果键存在，释放页面锁并返回 false 表示插入失败（键重复）
     buffer_pool_manager_->UnpinPage(page->GetPageId(), false);
     return false;
   } else {
+    // 如果键不存在，插入新的键值对到叶子节点中
     page->Insert(key, value, processor_);
-    if(page->GetSize() >= page->GetMaxSize()) {
+    // 检查插入后叶子节点是否超出其最大容量
+    if (page->GetSize() >= page->GetMaxSize()) {
+      // 如果超出容量，执行页面分裂操作
       auto new_page = Split(page, transaction);
+      // 设置新叶子节点的下一个节点 ID 为当前叶子节点的下一个节点 ID
       new_page->SetNextPageId(page->GetNextPageId());
+      // 更新当前叶子节点的下一个节点 ID 为新分裂出的叶子节点的 ID
       page->SetNextPageId(new_page->GetPageId());
+      // 将分裂后的新键插入到父节点中
       InsertIntoParent(page, new_page->KeyAt(0), new_page, transaction);
+      // 释放新页面的锁定，并标记其已被修改
       buffer_pool_manager_->UnpinPage(new_page->GetPageId(), true);
     }
+    // 释放当前叶子节点的锁定，并标记其已被修改
     buffer_pool_manager_->UnpinPage(page->GetPageId(), true);
     return true;
   }
 }
+
 
 /*
  * Split input page and return newly created page.
