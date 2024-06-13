@@ -49,8 +49,14 @@ vector<RowId> IndexScanExecutor::IndexScan(AbstractExpressionRef predicate) {
     case ExpressionType::LogicExpression: {
       vector<RowId> lhs = IndexScan(predicate->GetChildAt(0));
       vector<RowId> rhs = IndexScan(predicate->GetChildAt(1));
-      if (lhs.empty()) return rhs;
-      if (rhs.empty()) return lhs;
+      // The function cannot differentiate between the case where the number of rows that
+      // meet the criteria in the indexed column is zero and the case where the column is
+      // not indexed. Writing it this way will ignore the filtering effect brought about
+      // by having zero rows that meet the criteria in the indexed column.
+      if (plan_->need_filter_) {
+        if (lhs.empty()) return rhs;
+        if (rhs.empty()) return lhs;
+      }
       sort(lhs.begin(), lhs.end(), RowidCompare());
       sort(rhs.begin(), rhs.end(), RowidCompare());
       vector<RowId> result;
