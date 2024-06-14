@@ -6,7 +6,7 @@
 #include "page/bitmap_page.h"
 
 static constexpr page_id_t MAX_VALID_PAGE_ID = (PAGE_SIZE - 8) / 4 * BitmapPage<PAGE_SIZE>::GetMaxSupportedSize();
-//自己的理解：减去第一个物理页（存disk meta data），之后为什么要除4，乘每个bitmap管理的页数也是一个分区的大小？
+
 class DiskFileMetaPage {
  public:
   uint32_t GetExtentNums() { return num_extents_; }
@@ -22,7 +22,7 @@ class DiskFileMetaPage {
 
  public:
   uint32_t num_allocated_pages_{0};
-  uint32_t num_extents_{0};  // each extent consists with a bit map and BIT_MAP_SIZE pages
+  uint32_t num_extents_{0}; // each extent consists with a bit map and BIT_MAP_SIZE pages
   uint32_t extent_used_page_[0];
 };
 

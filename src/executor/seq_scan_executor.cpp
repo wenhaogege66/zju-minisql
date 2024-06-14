@@ -7,7 +7,8 @@ SeqScanExecutor::SeqScanExecutor(ExecuteContext *exec_ctx, const SeqScanPlanNode
     : AbstractExecutor(exec_ctx),
       plan_(plan),
       iterator_(nullptr, nullptr, RowId(INVALID_PAGE_ID, 0)),
-      is_schema_same_(false) {}
+      is_schema_same_(false) {
+}
 
 bool SeqScanExecutor::SchemaEqual(const Schema *table_schema, const Schema *output_schema) {
   auto table_columns = table_schema->GetColumns();
@@ -39,6 +40,8 @@ void SeqScanExecutor::TupleTransfer(const Schema *table_schema, const Schema *ou
 }
 
 void SeqScanExecutor::Init() {
+  auto tmp0 = exec_ctx_->GetCatalog();
+  auto tmp4 = plan_->GetTableName();
   exec_ctx_->GetCatalog()->GetTable(plan_->GetTableName(), table_info_);
   auto first_row = table_info_->GetTableHeap()->Begin(nullptr);
   iterator_ = (table_info_->GetTableHeap()->Begin(exec_ctx_->GetTransaction()));

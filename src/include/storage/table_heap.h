@@ -22,52 +22,53 @@ class TableHeap {
     return new TableHeap(buffer_pool_manager, first_page_id, schema, log_manager, lock_manager);
   }
 
-  ~TableHeap() {}
+  ~TableHeap() {
+  }
 
   /**
-   * Insert a tuple into the table. If the tuple is too large (>= page_size), return false.
-   * @param[in/out] row Tuple Row to insert, the rid of the inserted tuple is wrapped in object row
-   * @param[in] txn The recovery performing the insert
-   * @return true iff the insert is successful
+  * Insert a tuple into the table. If the tuple is too large (>= page_size), return false.
+  * @param[in/out] row Tuple Row to insert, the rid of the inserted tuple is wrapped in object row
+  * @param[in] txn The recovery performing the insert
+  * @return true iff the insert is successful
    */
   bool InsertTuple(Row &row, Txn *txn);
 
   /**
-   * Mark the tuple as deleted. The actual delete will occur when ApplyDelete is called.
-   * @param[in] rid Resource id of the tuple of delete
-   * @param[in] txn Txn performing the delete
-   * @return true iff the delete is successful (i.e the tuple exists)
+  * Mark the tuple as deleted. The actual delete will occur when ApplyDelete is called.
+  * @param[in] rid Resource id of the tuple of delete
+  * @param[in] txn Txn performing the delete
+  * @return true iff the delete is successful (i.e the tuple exists)
    */
   bool MarkDelete(const RowId &rid, Txn *txn);
 
   /**
-   * if the new tuple is too large to fit in the old page, return false (will delete and insert)
-   * @param[in] row Tuple of new row
-   * @param[in] rid Rid of the old tuple
-   * @param[in] txn Txn performing the update
-   * @return true is update is successful.
+  * if the new tuple is too large to fit in the old page, return false (will delete and insert)
+  * @param[in] row Tuple of new row
+  * @param[in] rid Rid of the old tuple
+  * @param[in] txn Txn performing the update
+  * @return true is update is successful.
    */
   bool UpdateTuple(Row &row, const RowId &rid, Txn *txn);
 
   /**
-   * Called on Commit/Abort to actually delete a tuple or rollback an insert.
-   * @param rid Rid of the tuple to delete
-   * @param txn Txn performing the delete.
+  * Called on Commit/Abort to actually delete a tuple or rollback an insert.
+  * @param rid Rid of the tuple to delete
+  * @param txn Txn performing the delete.
    */
   void ApplyDelete(const RowId &rid, Txn *txn);
 
   /**
-   * Called on abort to rollback a delete.
-   * @param[in] rid Rid of the deleted tuple.
-   * @param[in] txn Txn performing the rollback
+  * Called on abort to rollback a delete.
+  * @param[in] rid Rid of the deleted tuple.
+  * @param[in] txn Txn performing the rollback
    */
   void RollbackDelete(const RowId &rid, Txn *txn);
 
   /**
-   * Read a tuple from the table.
-   * @param[in/out] row Output variable for the tuple, row id of the tuple is wrapped in row
-   * @param[in] txn recovery performing the read
-   * @return true if the read was successful (i.e. the tuple exists)
+  * Read a tuple from the table.
+  * @param[in/out] row Output variable for the tuple, row id of the tuple is wrapped in row
+  * @param[in] txn recovery performing the read
+  * @return true if the read was successful (i.e. the tuple exists)
    */
   bool GetTuple(Row *row, Txn *txn);
 
@@ -84,28 +85,28 @@ class TableHeap {
   }
 
   /**
-   * Free table heap and release storage in disk file
+  * Free table heap and release storage in disk file
    */
   void DeleteTable(page_id_t page_id = INVALID_PAGE_ID);
 
   /**
-   * @return the begin iterator of this table
+  * @return the begin iterator of this table
    */
   TableIterator Begin(Txn *txn);
 
   /**
-   * @return the end iterator of this table
+  * @return the end iterator of this table
    */
   TableIterator End();
 
   /**
-   * @return the id of the first page of this table
+  * @return the id of the first page of this table
    */
   inline page_id_t GetFirstPageId() const { return first_page_id_; }
 
  private:
   /**
-   * create table heap and initialize first page
+  * create table heap and initialize first page
    */
   explicit TableHeap(BufferPoolManager *buffer_pool_manager, Schema *schema, Txn *txn, LogManager *log_manager,
                      LockManager *lock_manager)
@@ -113,8 +114,13 @@ class TableHeap {
         schema_(schema),
         log_manager_(log_manager),
         lock_manager_(lock_manager) {
-    auto page = reinterpret_cast<TablePage *>(buffer_pool_manager_->NewPage(first_page_id_));
-    page->Init(first_page_id_,0,log_manager_,txn);
+    //initialize to make sure there must have first page
+    auto first_page = reinterpret_cast<TablePage *>(buffer_pool_manager->NewPage(first_page_id_));
+    first_page->Init(first_page_id_, INVALID_PAGE_ID, log_manager, txn);
+    buffer_pool_manager->UnpinPage(first_page_id_, true);
+    schema_ = schema;
+    last_page_id_ = first_page_id_;
+    number_of_pages = 1;
   };
 
   explicit TableHeap(BufferPoolManager *buffer_pool_manager, page_id_t first_page_id, Schema *schema,
@@ -123,11 +129,14 @@ class TableHeap {
         first_page_id_(first_page_id),
         schema_(schema),
         log_manager_(log_manager),
-        lock_manager_(lock_manager) {}
+        lock_manager_(lock_manager) {
+  }
 
  private:
   BufferPoolManager *buffer_pool_manager_;
+  uint32_t number_of_pages{0};
   page_id_t first_page_id_;
+  page_id_t last_page_id_;
   Schema *schema_;
   [[maybe_unused]] LogManager *log_manager_;
   [[maybe_unused]] LockManager *lock_manager_;

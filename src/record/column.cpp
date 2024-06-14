@@ -33,90 +33,91 @@ Column::Column(const Column *other)
       len_(other->len_),
       table_ind_(other->table_ind_),
       nullable_(other->nullable_),
-      unique_(other->unique_) {}
+      unique_(other->unique_) {
+}
 
 /**
 * TODO: Student Implement
  */
 uint32_t Column::SerializeTo(char *buf) const {
-  // replace with your code here
-  MACH_WRITE_UINT32(buf, COLUMN_MAGIC_NUM);
-  MACH_WRITE_INT32(buf+4,type_);
-  MACH_WRITE_UINT32(buf+8,len_);
-  MACH_WRITE_UINT32(buf+12,table_ind_);
-  switch (nullable_)
-  {
-    case false:
-      MACH_WRITE_INT32(buf+16,0);
-      break;
-    default:
-      MACH_WRITE_INT32(buf+16,1);
-      break;
-  }
-  switch (unique_)
-  {
-    case false:
-      MACH_WRITE_INT32(buf+20,0);
-      break;
-    default:
-      MACH_WRITE_INT32(buf+20,1);
-      break;
-  }
-  int name_len=sizeof(name_);
-  MACH_WRITE_INT32(buf+24,name_len);
-  MACH_WRITE_STRING(buf+28,name_);
-  return GetSerializedSize();
+  uint32_t op = 0;
+  //magic number
+  MACH_WRITE_TO(uint32_t, buf, COLUMN_MAGIC_NUM);
+  op += sizeof(uint32_t);
+  //column name
+  MACH_WRITE_TO(uint32_t, buf+op, name_.length());
+  op += sizeof(uint32_t);
+  MACH_WRITE_STRING(buf+op, name_);
+  op += name_.length();
+  //type
+  MACH_WRITE_TO(TypeId, buf+op, type_);
+  op += sizeof(TypeId);
+  //length
+  MACH_WRITE_TO(uint32_t, buf+op, len_);
+  op += sizeof(uint32_t);
+  //table position
+  MACH_WRITE_TO(uint32_t, buf+op, table_ind_);
+  op += sizeof(uint32_t);
+  //nullable
+  MACH_WRITE_TO(bool, buf+op, nullable_);
+  op += sizeof(bool);
+  //unique
+  MACH_WRITE_TO(bool, buf+op, unique_);
+  op += sizeof(bool);
+  return op;
 }
 
 /**
  * TODO: Student Implement
  */
 uint32_t Column::GetSerializedSize() const {
-  // replace with your code here
-  uint32_t  size=sizeof(name_)+28;
-  //uint32_t  size=name_.length() + 18 + sizeof(TypeId);;
-
-  return size;
+  uint32_t op = 0;
+  op += sizeof(uint32_t);
+  op += sizeof(uint32_t);
+  op += name_.length();
+  op += sizeof(TypeId);
+  op += sizeof(uint32_t);
+  op += sizeof(uint32_t);
+  op += sizeof(bool);
+  op += sizeof(bool);
+  return op;
 }
 
 /**
  * TODO: Student Implement
  */
 uint32_t Column::DeserializeFrom(char *buf, Column *&column) {
-  if (column != nullptr) {
-    LOG(WARNING) << "Pointer to column is not null in column deserialize." 									 << std::endl;
-  }
-  /* deserialize field from buf */
+  //magic number
+  uint32_t op = 0;
   uint32_t magic_num = MACH_READ_UINT32(buf);
-  ASSERT(magic_num == COLUMN_MAGIC_NUM, "Failed to deserialize table info.");
-  int tp=MACH_READ_INT32(buf+4);
-  TypeId  type=(enum  TypeId)tp;
-  uint32_t col_len=MACH_READ_UINT32(buf+8);
-  uint32_t col_ind=MACH_READ_UINT32(buf+12);
-  int temp;
-  bool  nullable;
-  temp=MACH_READ_INT32(buf+16);
-  if(temp==1){
-    nullable=true;
-  }else{
-    nullable=false;
+  op += sizeof(uint32_t);
+  ASSERT(magic_num == COLUMN_MAGIC_NUM, "warning");
+  //name
+  uint32_t name_length = MACH_READ_FROM(uint32_t, buf+op);
+  op += sizeof(uint32_t);
+  std::string name;
+  for (int i = 0; i < name_length; i++) {
+    name += MACH_READ_FROM(char, buf+op);
+    op += sizeof(char);
   }
-  bool  unique;
-  temp=MACH_READ_INT32(buf+20);
-  if(temp==1){
-    unique=true;
-  }else{
-    unique=false;
-  }
-  int32_t name_len=MACH_READ_INT32(buf+24);
-  uint32_t  ofs=28+name_len;
-  std::string column_name;
-  column_name.assign(buf+28,name_len);
-  /* allocate object */
+  //type
+  TypeId type = MACH_READ_FROM(TypeId, buf+op);
+  op += sizeof(TypeId);
+  //length
+  uint32_t len = MACH_READ_FROM(uint32_t, buf+op);
+  op += sizeof(uint32_t);
+  //table position
+  uint32_t table_ind = MACH_READ_FROM(uint32_t, buf+op);
+  op += sizeof(uint32_t);
+  //nullable
+  bool nullable = MACH_READ_FROM(bool, buf+op);
+  op += sizeof(bool);
+  bool unique = MACH_READ_FROM(bool, buf+op);
+  op += sizeof(bool);
   if (type == kTypeChar) {
-    column = new Column(column_name, type, col_len, col_ind, nullable, unique);
+    column = new Column(name, type, len, table_ind, nullable, unique);
   } else {
-    column = new Column(column_name, type, col_ind, nullable, unique);
+    column = new Column(name, type, table_ind, nullable, unique);
   }
-  return ofs;
+  return op;
 }

@@ -6,41 +6,37 @@
 #include "common/config.h"
 #include "common/macros.h"
 
-template <size_t PageSize>
+template<size_t PageSize>
 class BitmapPage {
  public:
-
-  uint32_t GetNextFreePage();
-
-
   /**
-   * @return The number of pages that the bitmap page can record, i.e. the capacity of an extent.
+  * @return The number of pages that the bitmap page can record, i.e. the capacity of an extent.
    */
   static constexpr size_t GetMaxSupportedSize() { return 8 * MAX_CHARS; }
 
   /**
-   * @param page_offset Index in extent of the page allocated.
-   * @return true if successfully allocate a page.
+  * @param page_offset Index in extent of the page allocated.
+  * @return true if successfully allocate a page.
    */
   bool AllocatePage(uint32_t &page_offset);
 
   /**
-   * @return true if successfully de-allocate a page.
+  * @return true if successfully de-allocate a page.
    */
   bool DeAllocatePage(uint32_t page_offset);
 
   /**
-   * @return whether a page in the extent is free
+  * @return whether a page in the extent is free
    */
   bool IsPageFree(uint32_t page_offset) const;
 
  private:
   /**
-   * check a bit(byte_index, bit_index) in bytes is free(value 0).
-   *
-   * @param byte_index value of page_offset / 8
-   * @param bit_index value of page_offset % 8
-   * @return true if a bit is 0, false if 1.
+  * check a bit(byte_index, bit_index) in bytes is free(value 0).
+  *
+  * @param byte_index value of page_offset / 8
+  * @param bit_index value of page_offset % 8
+  * @return true if a bit is 0, false if 1.
    */
   bool IsPageFreeLow(uint32_t byte_index, uint8_t bit_index) const;
 

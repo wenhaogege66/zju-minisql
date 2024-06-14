@@ -33,16 +33,17 @@ ExecuteEngine::ExecuteEngine() {
   }
   /** When you have completed all the code for
    *  the test, run it using main.cpp and uncomment
-   *  this part of the code.
-  struct dirent *stdir;
-  while((stdir = readdir(dir)) != nullptr) {
-    if( strcmp( stdir->d_name , "." ) == 0 ||
-        strcmp( stdir->d_name , "..") == 0 ||
-        stdir->d_name[0] == '.')
-      continue;
-    dbs_[stdir->d_name] = new DBStorageEngine(stdir->d_name, false);
-  }
-   **/
+   *  this part of the code.**/
+  //  struct dirent *stdir;
+  //  while((stdir = readdir(dir)) != nullptr) {
+  //    if( strcmp( stdir->d_name , "." ) == 0 ||
+  //        strcmp( stdir->d_name , "..") == 0 ||
+  //        stdir->d_name[0] == '.')
+  //      continue;
+  //    char db_name[256];
+  //    strncpy(db_name, stdir->d_name, strlen(stdir->d_name) - 3);
+  //    dbs_[db_name] = new DBStorageEngine(stdir->d_name, false);
+  //  }
   closedir(dir);
 }
 
@@ -147,6 +148,10 @@ dberr_t ExecuteEngine::Execute(pSyntaxNode ast) {
     default:
       break;
   }
+  if (dbs_.find(current_db_) == dbs_.end()) {
+    cout << "ERROR: No database selected" << endl;
+    return DB_FAILED;
+  }
   // Plan the query.
   Planner planner(context.get());
   std::vector<Row> result_set{};
@@ -206,6 +211,8 @@ dberr_t ExecuteEngine::Execute(pSyntaxNode ast) {
     writer.EndInformation(result_set.size(), duration_time, false);
   }
   std::cout << writer.stream_.rdbuf() << std::flush;
+  if (ast->type_ == kNodeSelect)
+    delete planner.plan_->OutputSchema();
   return DB_SUCCESS;
 }
 
@@ -248,10 +255,17 @@ dberr_t ExecuteEngine::ExecuteCreateDatabase(pSyntaxNode ast, ExecuteContext *co
   LOG(INFO) << "ExecuteCreateDatabase" << std::endl;
 #endif
   string db_name = ast->child_->val_;
+  string db_file_name = "databases/" + db_name + ".db";
   if (dbs_.find(db_name) != dbs_.end()) {
     return DB_ALREADY_EXIST;
   }
-  dbs_.insert(make_pair(db_name, new DBStorageEngine(db_name, true)));
+  ofstream db_file(db_file_name, ios::out);
+  if (!db_file.is_open()) {
+    std::cout << "Failed to create database " << db_name << endl;
+    return DB_FAILED;
+  }
+  dbs_.insert(make_pair(db_name, new DBStorageEngine(db_name + ".db", true)));
+  cout << "Database " << db_name << " is created successfully" << endl;
   return DB_SUCCESS;
 }
 
@@ -263,7 +277,7 @@ dberr_t ExecuteEngine::ExecuteDropDatabase(pSyntaxNode ast, ExecuteContext *cont
   if (dbs_.find(db_name) == dbs_.end()) {
     return DB_NOT_EXIST;
   }
-  remove(db_name.c_str());
+  remove(("databases/" + db_name + ".db").c_str());
   delete dbs_[db_name];
   dbs_.erase(db_name);
   if (current_db_ == db_name)
@@ -315,7 +329,7 @@ dberr_t ExecuteEngine::ExecuteShowTables(pSyntaxNode ast, ExecuteContext *contex
   LOG(INFO) << "ExecuteShowTables" << std::endl;
 #endif
   if (current_db_.empty()) {
-    cout << "No database selected" << endl;
+    cout << "ERROR: No database selected" << endl;
     return DB_FAILED;
   }
   vector<TableInfo *> tables;

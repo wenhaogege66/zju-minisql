@@ -1,38 +1,50 @@
 #include "buffer/lru_replacer.h"
 
-#include <algorithm>
-
 LRUReplacer::LRUReplacer(size_t num_pages){
-
+  this -> cap = num_pages;
 }
 
 LRUReplacer::~LRUReplacer() = default;
 
+/**
+ * TODO: Student Implement
+ */
 bool LRUReplacer::Victim(frame_id_t *frame_id) {
-  if (Size() > 0) {
-    *frame_id = lru_cache.front();//最前面是最不常访问的
-    lru_cache.pop_front();
-//    lru_not_pin.remove_if([&frame_id](int cur_val) -> int {return  cur_val == *frame_id;});
-    return true;
-  }
-  return false;
+  std::lock_guard<std::mutex>lock(mutex_);
+  if(lru_list_.empty())
+    return false;
+  *frame_id = lru_list_.back();
+  lru_list_.pop_back();
+  page_set_.erase(*frame_id);
+  return true;
 }
 
+/**
+ * TODO: Student Implement
+ */
 void LRUReplacer::Pin(frame_id_t frame_id) {
-  auto it = find(lru_cache.begin(),lru_cache.end(),frame_id);
-  if (it != lru_cache.end()) {
-    lru_cache.erase(it);
+  std::lock_guard<std::mutex>lock(mutex_);
+  if(page_set_.find(frame_id) != page_set_.end()){
+    lru_list_.remove(frame_id);
+    page_set_.erase(frame_id);
   }
 }
 
+/**
+ * TODO: Student Implement
+ */
 void LRUReplacer::Unpin(frame_id_t frame_id) {
-  auto it = find(lru_cache.begin(),lru_cache.end(),frame_id);
-  if (it == lru_cache.end())
-  {
-    lru_cache.emplace_back(frame_id);
+  std::lock_guard<std::mutex>lock(mutex_);
+  if(page_set_.find(frame_id) == page_set_.end() && lru_list_.size() < cap){
+    lru_list_.push_front(frame_id);
+    page_set_.insert(frame_id);
   }
 }
 
+/**
+ * TODO: Student Implement
+ */
 size_t LRUReplacer::Size() {
-  return lru_cache.size();
+  std::lock_guard<std::mutex>lock(mutex_);
+  return lru_list_.size();
 }

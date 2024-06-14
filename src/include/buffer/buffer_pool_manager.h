@@ -5,6 +5,7 @@
 #include <mutex>
 #include <unordered_map>
 
+
 #include "buffer/lru_replacer.h"
 #include "page/disk_file_meta_page.h"
 #include "page/page.h"
@@ -36,24 +37,25 @@ class BufferPoolManager {
 
  private:
   /**
-   * Allocate new page (operations like create index/table) For now just keep an increasing counter
+  * Allocate new page (operations like create index/table) For now just keep an increasing counter
    */
   page_id_t AllocatePage();
 
   /**
-   * Deallocate page (operations like drop index/table) Need bitmap in header page for tracking pages
+  * Deallocate page (operations like drop index/table) Need bitmap in header page for tracking pages
    */
   void DeallocatePage(page_id_t page_id);
 
+  frame_id_t TryToFindFreePage();
 
  private:
-  size_t pool_size_;                                 // number of pages in buffer pool
-  Page *pages_;                                      // array of pages
-  DiskManager *disk_manager_;                        // pointer to the disk manager.
-  unordered_map<page_id_t, frame_id_t> page_table_;  // to keep track of pages
-  Replacer *replacer_;                               // to find an unpinned page for replacement
-  list<frame_id_t> free_list_;                       // to find a free page for replacement
-  recursive_mutex latch_;                            // to protect shared data structure
+  size_t pool_size_; // number of pages in buffer pool
+  Page *pages_; // array of pages
+  DiskManager *disk_manager_; // pointer to the disk manager.
+  unordered_map<page_id_t, frame_id_t> page_table_; // to keep track of pages
+  Replacer *replacer_; // to find an unpinned page for replacement
+  list<frame_id_t> free_list_; // to find a free page for replacement
+  recursive_mutex latch_; // to protect shared data structure
 };
 
 #endif  // MINISQL_BUFFER_POOL_MANAGER_H

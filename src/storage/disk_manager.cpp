@@ -51,98 +51,87 @@ void DiskManager::WritePage(page_id_t logical_page_id, const char *page_data) {
  * TODO: Student Implement
  */
 page_id_t DiskManager::AllocatePage() {
-  uint32_t disk_file_meta_page[1024];//管理1024个区（PAGE_SIZE/4）
-  memcpy(disk_file_meta_page, meta_data_, 4096);
-
-  //找未满的区
-  uint32_t not_full_extent_id = 0;
-  //前两页留作记录区数等（0：总的已分配页数；1：分区数）
-  while (  disk_file_meta_page[2+not_full_extent_id] == BITMAP_SIZE) {
-    not_full_extent_id++;
-  };
-
-  auto bitmap_physical_id = (page_id_t)(not_full_extent_id * (BITMAP_SIZE + 1) + 1);//一个区是BITMAP_SIZE + 1，第一个page是meta
-  char bitmap[PAGE_SIZE];//
-  ReadPhysicalPage(bitmap_physical_id, bitmap);
-  auto *bitmap_page = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(bitmap);
-  uint32_t next_free_page = bitmap_page->GetNextFreePage();
-  bitmap_page->AllocatePage(next_free_page);
-  size_t logic_page_id;//逻辑id
-  logic_page_id = not_full_extent_id * BITMAP_SIZE + next_free_page;//计算逻辑页号，BITMAP_SIZE不用+1
-
-  if (not_full_extent_id >= disk_file_meta_page[1])//上一个区满了，现在分配的是一个新区，记得更新
-    disk_file_meta_page[1]+=1;//如果not_full_extent_id大于或等于当前的分区数量，那么将分区数量加1
-  disk_file_meta_page[0]++;//增加总的已分配页数。由于disk_file_meta_page数组的第一个元素存储的是总的已分配页数，我们通过增加第一个元素的值来反映新分配的页
-  disk_file_meta_page[2+not_full_extent_id]++;//数组从索引2开始存储每个分区的已分配页数量,not_full_extent_id是分区的ID
-
-  memcpy(meta_data_,disk_file_meta_page, 4096);
-  WritePhysicalPage(META_PAGE_ID, meta_data_);
-  WritePhysicalPage(bitmap_physical_id, bitmap);
-  return (page_id_t)logic_page_id;
+  DiskFileMetaPage *meta_page = reinterpret_cast<DiskFileMetaPage *>(meta_data_);
+  page_id_t temp_bitmap_id;
+  uint32_t new_page_id;
+  if (meta_page->num_allocated_pages_ == meta_page->num_extents_ * BITMAP_SIZE) {
+    meta_page->num_extents_++;
+    temp_bitmap_id = meta_page->num_extents_ - 1;
+    char buf[PAGE_SIZE];
+    memset(buf, 0, PAGE_SIZE);
+    BitmapPage<PAGE_SIZE> *bitmap = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(buf);
+    bitmap->AllocatePage(new_page_id);
+    page_id_t new_id = 1 + temp_bitmap_id * (BITMAP_SIZE + 1);
+    WritePhysicalPage(new_id, buf);
+    meta_page->num_allocated_pages_++;
+    meta_page->extent_used_page_[meta_page->num_extents_ - 1] = 1;
+    return LtoF(new_id + new_page_id + 1);
+  } else {
+    for (int i = 0; i < meta_page->num_extents_; i++) {
+      int k = meta_page->extent_used_page_[i];
+      if (meta_page->extent_used_page_[i] < BITMAP_SIZE) {
+        temp_bitmap_id = i;
+        break;
+      }
+    }
+    char bitmap_page_data[PAGE_SIZE];
+    page_id_t bitmap_id = 1 + temp_bitmap_id * (1 + BITMAP_SIZE);
+    ReadPhysicalPage(bitmap_id, bitmap_page_data);
+    BitmapPage<PAGE_SIZE> *bitmap = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(bitmap_page_data);
+    bitmap->AllocatePage(new_page_id);
+    WritePhysicalPage(bitmap_id, bitmap_page_data);
+    meta_page->num_allocated_pages_++;
+    meta_page->extent_used_page_[temp_bitmap_id]++;
+    return LtoF(bitmap_id + new_page_id + 1);
+  }
 }
 
 /**
  * TODO: Student Implement
  */
 void DiskManager::DeAllocatePage(page_id_t logical_page_id) {
-    // 首先计算位图页的物理页号，该位图页负责管理包含指定逻辑页号的分区的页分配情况
-    page_id_t bitmap_physical_id = 1 + MapPageId(logical_page_id) / (1 + BITMAP_SIZE);
-    // 为位图页分配内存并从磁盘读取位图页数据
-    char bitmap[PAGE_SIZE];
-    ReadPhysicalPage(bitmap_physical_id, bitmap);
-    // 将读取的位图页数据转换为BitmapPage类型，以便调用其成员函数进行操作
-    auto *bitmap_page = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(bitmap);
-    // 在位图页中标记指定的逻辑页号对应的位为0，表示该页现在是非分配状态（空闲）
-    bitmap_page->DeAllocatePage(logical_page_id % BITMAP_SIZE);
-    // 为元数据页分配内存并从磁盘读取元数据页数据
-    uint32_t disk_file_meta_page[1024];
-    // 计算当前非满分区ID，每个分区包含BITMAP_SIZE个数据页
-    //逻辑id:0,1,2第一个分区这种
-    uint32_t not_full_extent_id = logical_page_id / BITMAP_SIZE;
-    // 减少该分区的已分配页计数
-    if (--disk_file_meta_page[2 + not_full_extent_id]== 0) {
-      // 如果该分区的已分配页计数变为0，则减少总分区数
-      disk_file_meta_page[1]--;
-    }
-    // 减少总分配页计数
-    disk_file_meta_page[0]--;
-
-    // 将更新后的元数据复制回meta_data_数组，准备写回磁盘
-    memcpy(meta_data_, disk_file_meta_page, 4096);
-    // 将更新后的元数据页写回磁盘
-    WritePhysicalPage(META_PAGE_ID, meta_data_);
-    // 将更新后的位图页写回磁盘，以反映页的释放状态
-    WritePhysicalPage(bitmap_physical_id, bitmap);
+  char bitmap_page_data[PAGE_SIZE];
+  ReadPhysicalPage((logical_page_id / BITMAP_SIZE) * (BITMAP_SIZE + 1) + 1, bitmap_page_data);
+  BitmapPage<PAGE_SIZE> *bitmap = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(bitmap_page_data);
+  if (bitmap->DeAllocatePage(logical_page_id % BITMAP_SIZE)) {
+    DiskFileMetaPage *meta_page = reinterpret_cast<DiskFileMetaPage *>(meta_data_);
+    WritePhysicalPage((logical_page_id / BITMAP_SIZE) * (BITMAP_SIZE + 1) + 1, bitmap_page_data);
+    meta_page->num_allocated_pages_--;
+    meta_page->extent_used_page_[logical_page_id / BITMAP_SIZE]--;
+    if (meta_page->extent_used_page_[logical_page_id / BITMAP_SIZE] == 0)
+      meta_page->num_extents_--;
+  }
 }
-
 
 /**
  * TODO: Student Implement
  */
 bool DiskManager::IsPageFree(page_id_t logical_page_id) {
-  // 判断对应的bitmap中那一bit是0还是1
-  // 读取对应的bitmap
-  page_id_t bitmap_physical_id = 1 + MapPageId(logical_page_id) / (1 + BITMAP_SIZE);
-  char bitmap[PAGE_SIZE];
-  ReadPhysicalPage(bitmap_physical_id, bitmap);
-  auto *bitmap_page = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(bitmap);
-  // 判断
-  if (bitmap_page->IsPageFree(logical_page_id % BITMAP_SIZE))
-    return true;
-  return false;
+  char bitmap_page_data[PAGE_SIZE];
+  ReadPhysicalPage((logical_page_id / BITMAP_SIZE) * (BITMAP_SIZE + 1) + 1, bitmap_page_data);
+  BitmapPage<PAGE_SIZE> *bitmap = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(bitmap_page_data);
+  return bitmap->IsPageFree(logical_page_id % BITMAP_SIZE);
 }
 
 /**
  * TODO: Student Implement
  */
- //逻辑转物理
-//刚开始物理只比逻辑多2，但是随着逻辑的增多，逻辑每多一个分区，物理就又领先一个
 page_id_t DiskManager::MapPageId(page_id_t logical_page_id) {
-  return 2 + logical_page_id + logical_page_id / BITMAP_SIZE;
+  page_id_t temp_num = logical_page_id / BITMAP_SIZE;
+  page_id_t temp_op = logical_page_id % BITMAP_SIZE;
+  page_id_t temp_result = temp_num * (BITMAP_SIZE + 1) + temp_op + 2;
+  return temp_result;
 }
 
+page_id_t DiskManager::LtoF(page_id_t physics_page_id) {
+  page_id_t temp_block = (physics_page_id - 1) / (BITMAP_SIZE + 1);
+  page_id_t temp_op = (physics_page_id - 1) % (BITMAP_SIZE + 1);
+  return temp_block * BITMAP_SIZE + temp_op - 1;
+}
+
+
 int DiskManager::GetFileSize(const std::string &file_name) {
-  struct stat stat_buf{};
+  struct stat stat_buf;
   int rc = stat(file_name.c_str(), &stat_buf);
   return rc == 0 ? stat_buf.st_size : -1;
 }
