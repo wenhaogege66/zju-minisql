@@ -20,7 +20,6 @@ uint32_t TableMetadata::SerializeTo(char *buf) const {
   buf += 4;
   // table schema
   buf += schema_->SerializeTo(buf);
-  auto tmp = buf - p;
   ASSERT(buf - p == ofs, "Unexpected serialize size.");
   return ofs;
 }
@@ -29,7 +28,7 @@ uint32_t TableMetadata::SerializeTo(char *buf) const {
  * TODO: Student Implement
  */
 uint32_t TableMetadata::GetSerializedSize() const {
-  return 4 + 4 + (4 + table_name_.length()) + 4 + schema_->GetSerializedSize();
+  return 4 + 4 + MACH_STR_SERIALIZED_SIZE(table_name_) + 4 + schema_->GetSerializedSize();
 }
 
 /**

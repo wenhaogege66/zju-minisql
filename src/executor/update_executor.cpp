@@ -20,6 +20,17 @@ bool UpdateExecutor::Next([[maybe_unused]] Row *row, RowId *rid) {
   RowId src_rid;
   if (child_executor_->Next(&src_row, &src_rid)) {
     Row dest_row = GenerateUpdatedTuple(src_row);
+    for (auto info: index_info_) {
+      Row key_row;
+      dest_row.GetKeyFromRow(table_info_->GetSchema(), info->GetIndexKeySchema(), key_row);
+      std::vector<RowId> result;
+      if (!key_row.GetFields().empty() &&
+          info->GetIndex()->ScanKey(key_row, result, exec_ctx_->GetTransaction()) == DB_SUCCESS &&
+          find(result.begin(), result.end(), src_rid) == result.end()) {
+        std::cout << "key already exists" << std::endl;
+        return false;
+      }
+    }
     if (!table_info_->GetTableHeap()->UpdateTuple(dest_row, src_rid, txn_)) {
       return false;
     }

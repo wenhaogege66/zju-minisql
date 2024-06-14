@@ -6,7 +6,8 @@
 
 InsertExecutor::InsertExecutor(ExecuteContext *exec_ctx, const InsertPlanNode *plan,
                                std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {}
+    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {
+}
 
 void InsertExecutor::Init() {
   child_executor_->Init();
@@ -31,7 +32,8 @@ bool InsertExecutor::Next([[maybe_unused]] Row *row, RowId *rid) {
     }
     if (table_info_->GetTableHeap()->InsertTuple(insert_row, exec_ctx_->GetTransaction())) {
       Row key_row;
-      for (auto info: index_info_) {  // 更新索引
+      for (auto info: index_info_) {
+        // 更新索引
         insert_row.GetKeyFromRow(schema_, info->GetIndexKeySchema(), key_row);
         info->GetIndex()->InsertEntry(key_row, insert_row.GetRowId(), exec_ctx_->GetTransaction());
       }

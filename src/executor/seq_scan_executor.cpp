@@ -31,7 +31,7 @@ void SeqScanExecutor::TupleTransfer(const Schema *table_schema, const Schema *ou
   const auto &output_columns = output_schema->GetColumns();
   std::vector<Field> dest_row;
   dest_row.reserve(output_columns.size());
-  for (const auto column : output_columns) {
+  for (const auto column: output_columns) {
     auto idx = column->GetTableInd();
     dest_row.emplace_back(*row->GetField(idx));
   }

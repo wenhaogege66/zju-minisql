@@ -4,62 +4,54 @@
  * TODO: Student Implement
  */
 uint32_t Schema::SerializeTo(char *buf) const {
-  // replace with your code here
-  MACH_WRITE_INT32(buf,columns_.size());
-  uint32_t j=4;
-  for (auto i:columns_){
-    i->SerializeTo(buf+j);
-    j+=i->GetSerializedSize();
+  uint32_t op = 0;
+  //magic number
+  MACH_WRITE_TO(uint32_t, buf+op, SCHEMA_MAGIC_NUM);
+  op += sizeof(uint32_t);
+  //colums
+  uint32_t columns_num = columns_.size();
+  MACH_WRITE_TO(uint32_t, buf+op, columns_num);
+  op += sizeof(uint32_t);
+  for (int i = 0; i < columns_num; i++) {
+    op += columns_[i]->SerializeTo(buf + op);
   }
-  switch (is_manage_)
-  {
-    case true:
-      MACH_WRITE_INT32(buf+j+4,1);
-      break;
-    default:
-      MACH_WRITE_INT32(buf+j+4,0);
-      break;
-  }
-  return j+8;
+  //is manage
+  MACH_WRITE_TO(bool, buf+op, is_manage_);
+  op += sizeof(bool);
+  return op;
 }
 
 uint32_t Schema::GetSerializedSize() const {
-  // replace with your code here
-  uint32_t  size=0;
-  for(auto i:columns_){
-    size+=i->GetSerializedSize();
+  uint32_t op = 0;
+  op += sizeof(uint32_t);
+  op += sizeof(uint32_t);
+  uint32_t columns_num = columns_.size();
+  for (int i = 0; i < columns_num; i++) {
+    op += columns_[i]->GetSerializedSize();
   }
-  size+=8;
-  size+=4;//bool
-  return size;
+  op += sizeof(bool);
+  return op;
 }
 
 uint32_t Schema::DeserializeFrom(char *buf, Schema *&schema) {
-  // replace with your code here
-  if (schema != nullptr) {
-    LOG(WARNING) << "Pointer to schema is not null in schema deserialize." 									 << std::endl;
-  }
-  int size=MACH_READ_INT32(buf);
+  uint32_t op = 0;
+  //magic number
+  uint32_t magic_num = MACH_READ_UINT32(buf);
+  op += sizeof(uint32_t);
+  ASSERT(magic_num == SCHEMA_MAGIC_NUM, "warning");
+  //colums
+  uint32_t columns_num;
+  columns_num = MACH_READ_FROM(uint32_t, buf+op);
+  op += sizeof(uint32_t);
   std::vector<Column *> columns;
-  uint32_t  ofs=4;
-  for(int i=0;i<size;i++){
-    Column *col = nullptr;
-    uint32_t  t;
-    t=Column::DeserializeFrom(buf+ofs,col);
-    columns.push_back(col);
-    ofs+=t;
+  for (int i = 0; i < columns_num; i++) {
+    Column *temp;
+    op += Column::DeserializeFrom(buf+op, temp);
+    columns.push_back(temp);
   }
-  bool is_manage;
-  switch (MACH_READ_INT32(buf+ofs))
-  {
-    case 1:
-      is_manage=true;
-      break;
-
-    default:
-      is_manage=false;
-      break;
-  }
-  Schema(columns,is_manage);
-  return ofs;
+  //is manger
+  bool is_manger = MACH_READ_FROM(bool, buf+op);
+  op += sizeof(bool);
+  schema = new Schema(columns, is_manger);
+  return op;
 }

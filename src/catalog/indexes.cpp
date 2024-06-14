@@ -42,16 +42,8 @@ uint32_t IndexMetadata::SerializeTo(char *buf) const {
 /**
  * TODO: Student Implement
  */
-// 固定头部大小（假设为12字节）
-// 魔数（4字节）
-// 表ID（4字节）
-// index_id（4字节）
-
-// 索引名称内容（index_name_.size() 字节）
-// 键映射数量（4字节）
-// 每个键映射的大小（4字节 * key_map_.size())
 uint32_t IndexMetadata::GetSerializedSize() const {
-  return 16 + (index_name_.size() + 4) + 4 * key_map_.size();
+  return 4 * 4 + MACH_STR_SERIALIZED_SIZE(index_name_) + 4 * key_map_.size();
 }
 
 uint32_t IndexMetadata::DeserializeFrom(char *buf, IndexMetadata *&index_meta) {
@@ -90,18 +82,9 @@ uint32_t IndexMetadata::DeserializeFrom(char *buf, IndexMetadata *&index_meta) {
 }
 
 Index *IndexInfo::CreateIndex(BufferPoolManager *buffer_pool_manager, const string &index_type) {
-  size_t max_size = 0;
-  uint32_t column_cnt = key_schema_->GetColumns().size();
-  size_t size_bitmap = (column_cnt % 8) ? column_cnt / 8 + 1 : column_cnt / 8;
-  // rid + column_cnt + bitmap
-  // column_cnt + bitmap
-  max_size += 4 + sizeof(unsigned char) * size_bitmap;
+  size_t max_size = 8;
   for (auto col : key_schema_->GetColumns()) {
-    // length of char column
-    if(col->GetType() == TypeId::kTypeChar)
-      max_size += 4;
     max_size += col->GetLength();
-
   }
 
   if (index_type == "bptree") {
