@@ -4,10 +4,10 @@
 #include "executor/executors/seq_scan_executor.h"
 
 SeqScanExecutor::SeqScanExecutor(ExecuteContext *exec_ctx, const SeqScanPlanNode *plan)
-    : AbstractExecutor(exec_ctx),
-      plan_(plan),
-      iterator_(nullptr, nullptr, RowId(INVALID_PAGE_ID, 0)),
-      is_schema_same_(false) {
+  : AbstractExecutor(exec_ctx),
+    plan_(plan),
+    iterator_(nullptr, nullptr, RowId(INVALID_PAGE_ID, 0)),
+    is_schema_same_(false) {
 }
 
 bool SeqScanExecutor::SchemaEqual(const Schema *table_schema, const Schema *output_schema) {

@@ -15,7 +15,7 @@ class ExecuteContext {
   /**
    * Creates an ExecuteContext for the recovery that is executing the query.
    * @param transaction The recovery executing the query
-   * @param catalog The catalog that the executor uses
+   * @param catalog The catalog1 that the executor uses
    * @param bpm The buffer pool manager that the executor uses
    */
   ExecuteContext(Txn *transaction, CatalogManager *catalog, BufferPoolManager *bpm)
@@ -28,7 +28,7 @@ class ExecuteContext {
   /** @return the running recovery */
   Txn *GetTransaction() const { return transaction_; }
 
-  /** @return the catalog */
+  /** @return the catalog1 */
   CatalogManager *GetCatalog() { return catalog_; }
 
   /** @return the buffer pool manager */
@@ -37,7 +37,7 @@ class ExecuteContext {
  private:
   /** The recovery context associated with this executor context */
   Txn *transaction_;
-  /** The datbase catalog associated with this executor context */
+  /** The datbase catalog1 associated with this executor context */
   CatalogManager *catalog_;
   /** The buffer pool manager associated with this executor context */
   BufferPoolManager *bpm_;

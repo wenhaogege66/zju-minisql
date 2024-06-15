@@ -24,7 +24,7 @@ DBStorageEngine::DBStorageEngine(std::string db_name, bool init, uint32_t buffer
       throw logic_error("Header page not free.");
     }
     if (bpm_->NewPage(id) == nullptr || id != CATALOG_META_PAGE_ID) {
-      throw logic_error("Failed to allocate catalog meta page.");
+      throw logic_error("Failed to allocate catalog1 meta page.");
     }
     if (bpm_->NewPage(id) == nullptr || id != INDEX_ROOTS_PAGE_ID) {
       throw logic_error("Failed to allocate header page.");
@@ -35,7 +35,7 @@ DBStorageEngine::DBStorageEngine(std::string db_name, bool init, uint32_t buffer
     bpm_->UnpinPage(CATALOG_META_PAGE_ID, false);
     bpm_->UnpinPage(INDEX_ROOTS_PAGE_ID, false);
   } else {
-    ASSERT(!bpm_->IsPageFree(CATALOG_META_PAGE_ID), "Invalid catalog meta page.");
+    ASSERT(!bpm_->IsPageFree(CATALOG_META_PAGE_ID), "Invalid catalog1 meta page.");
     ASSERT(!bpm_->IsPageFree(INDEX_ROOTS_PAGE_ID), "Invalid header page.");
   }
   catalog_mgr_ = new CatalogManager(bpm_, nullptr, nullptr, init);

@@ -9,10 +9,6 @@ static string db_file_name = "catalog_test.db";
 TEST(CatalogTest, CatalogMetaTest) {
   char *buf = new char[PAGE_SIZE];
   CatalogMeta *meta = CatalogMeta::NewInstance();
-//  string tmp = "whenqiang111111111111111111111111111111111111111111111";
-//  std::cout << sizeof(tmp) << std::endl;
-//  std::cout << MACH_STR_SERIALIZED_SIZE(tmp) << std::endl;
-  // fill data
   const int table_nums = 16;
   const int index_nums = 24;
   for (auto i = 0; i < table_nums; i++) {
@@ -63,7 +59,7 @@ TEST(CatalogTest, CatalogTableTest) {
   auto *table_heap = table_info->GetTableHeap();
   ASSERT_TRUE(table_heap != nullptr);
   delete db_01;
-  /** Stage 2: Testing catalog loading */
+  /** Stage 2: Testing catalog1 loading */
   auto db_02 = new DBStorageEngine(db_file_name, false);
   auto &catalog_02 = db_02->catalog_mgr_;
   TableInfo *table_info_03 = nullptr;
@@ -113,7 +109,7 @@ TEST(CatalogTest, CatalogIndexTest) {
     ASSERT_EQ(rid.Get(), ret[i].Get());
   }
   delete db_01;
-  /** Stage 2: Testing catalog loading */
+  /** Stage 2: Testing catalog1 loading */
   auto db_02 = new DBStorageEngine(db_file_name, false);
   auto &catalog_02 = db_02->catalog_mgr_;
   auto r4 = catalog_02->CreateIndex("table-1", "index-1", index_keys, &txn, index_info, "bptree");

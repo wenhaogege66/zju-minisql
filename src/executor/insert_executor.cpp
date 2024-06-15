@@ -6,7 +6,7 @@
 
 InsertExecutor::InsertExecutor(ExecuteContext *exec_ctx, const InsertPlanNode *plan,
                                std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {
+  : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {
 }
 
 void InsertExecutor::Init() {

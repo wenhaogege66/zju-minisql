@@ -33,7 +33,7 @@ TEST(BPlusTreeTests, BPlusTreeIndexSimpleTest) {
   page_id_t id;
   if (bpm_->IsPageFree(CATALOG_META_PAGE_ID)) {
     if (bpm_->NewPage(id) == nullptr || id != CATALOG_META_PAGE_ID) {
-      throw logic_error("Failed to allocate catalog meta page.");
+      throw logic_error("Failed to allocate catalog1 meta page.");
     }
   }
   if (bpm_->IsPageFree(INDEX_ROOTS_PAGE_ID)) {

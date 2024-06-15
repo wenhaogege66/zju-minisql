@@ -10,224 +10,181 @@
 /**
  * TODO: Student Implement
  */
-BPlusTree::BPlusTree(index_id_t index_id, BufferPoolManager *buffer_pool_manager, const KeyManager &KM,
-                     int leaf_max_size, int internal_max_size)
-    : index_id_(index_id),
-      buffer_pool_manager_(buffer_pool_manager),
-      processor_(KM),
-      leaf_max_size_(leaf_max_size),
-      internal_max_size_(internal_max_size) {
+BPlusTree::BPlusTree(index_id_t idx_id, BufferPoolManager *buf_pool_mgr, const KeyManager &key_mgr,
+                     int max_leaf_size, int max_internal_size)
+    : index_id_(idx_id),
+      buffer_pool_manager_(buf_pool_mgr),
+      processor_(key_mgr),
+      leaf_max_size_(max_leaf_size),
+      internal_max_size_(max_internal_size) {
 
-  // 如果叶子节点或内部节点的最大尺寸未定义，使用默认计算方法。
-  if(leaf_max_size == UNDEFINED_SIZE || internal_max_size == UNDEFINED_SIZE){
-    // 计算默认的叶子节点最大尺寸：页面大小减去叶子节点头的大小，然后除以每个键值对的大小。
+  // Check if the sizes for leaf or internal nodes are not defined
+  if(max_leaf_size == UNDEFINED_SIZE || max_internal_size == UNDEFINED_SIZE){
+    // Default leaf node size calculation
     leaf_max_size_ = (PAGE_SIZE - LEAF_PAGE_HEADER_SIZE) / (processor_.GetKeySize() + sizeof(RowId)) - 1;
 
-    // 计算默认的内部节点最大尺寸：页面大小减去内部节点头的大小，然后除以每个键-页ID对的大小。
+    // Default internal node size calculation
     internal_max_size_ =  (PAGE_SIZE - INTERNAL_PAGE_HEADER_SIZE) / (processor_.GetKeySize() + sizeof(RowId)) - 1;
 
-    // 确保内部节点的最大尺寸至少为2。
+    // Ensure minimum size for internal nodes
     if(internal_max_size_ < 2) {
-      internal_max_size_ = 2, leaf_max_size_ = 2;
+      internal_max_size_ = 2;
+      leaf_max_size_ = 2;
     }
   }
 
-  // 从缓冲池管理器中获取索引根页面，并尝试加载根节点ID。
-  auto page = reinterpret_cast<IndexRootsPage *> (buffer_pool_manager_->FetchPage(INDEX_ROOTS_PAGE_ID)->GetData());
-  if(page->GetRootId(index_id_, &root_page_id_) == 0){
-    // 如果根节点ID不存在，设置为无效值。
+  // Load the root page ID from the index roots page
+  auto root_page = reinterpret_cast<IndexRootsPage *> (buffer_pool_manager_->FetchPage(INDEX_ROOTS_PAGE_ID)->GetData());
+  if(root_page->GetRootId(index_id_, &root_page_id_) == 0){
+    // Root ID does not exist, set to invalid
     root_page_id_ = INVALID_PAGE_ID;
   }
 
-  // 释放根页面和根节点的锁定。
+  // Unpin the root and index roots page
   buffer_pool_manager_->UnpinPage(INDEX_ROOTS_PAGE_ID, true);
   buffer_pool_manager_->UnpinPage(root_page_id_, true);
 }
 
-
 void BPlusTree::Destroy(page_id_t current_page_id) {
-  // 如果B+树为空，直接返回。
+  // Check if the B+ tree is empty
   if(IsEmpty())
     return;
 
-  // 如果当前页面ID无效，使用根页面ID并更新根页面ID。
+  // If the current page ID is invalid, use the root page ID
   if(current_page_id == INVALID_PAGE_ID) {
     current_page_id = root_page_id_;
     root_page_id_ = INVALID_PAGE_ID;
-    UpdateRootPageId(2); // 2表示移除根节点。
+    UpdateRootPageId(2); // 2 signifies root removal
   }
 
-  // 从缓冲池中获取当前页面的数据并转换为B+树页面。
+  // Fetch and convert the current page to a B+ tree page
   auto page = reinterpret_cast<BPlusTreePage *>(buffer_pool_manager_->FetchPage(current_page_id)->GetData());
 
-  // 如果当前页面是内部节点，递归删除其子节点。
+  // If it's an internal node, recursively destroy its child nodes
   if(!page->IsLeafPage()) {
-    auto *inner = reinterpret_cast<InternalPage *>(page);
+    auto *internal_node = reinterpret_cast<InternalPage *>(page);
     for(int i = page->GetSize() - 1; i >= 0; --i) {
-      Destroy(inner->ValueAt(i));
+      Destroy(internal_node->ValueAt(i));
     }
   }
 
-  // 删除当前页面并释放缓冲池的锁定。
+  // Delete the current page and unpin it from the buffer pool
   buffer_pool_manager_->DeletePage(current_page_id);
   buffer_pool_manager_->UnpinPage(current_page_id, false);
 }
 
-
-/*
- * Helper function to decide whether current b+tree is empty
- */
+// Helper function to check if the B+ tree is empty
 bool BPlusTree::IsEmpty() const {
-  // 判断根节点ID是否为无效值，若是则返回true，表示B+树为空。
-  if(root_page_id_ == INVALID_PAGE_ID) return true;
-  return false;
+  // Return true if the root page ID is invalid, indicating the B+ tree is empty
+  return (root_page_id_ == INVALID_PAGE_ID);
 }
 
-/*****************************************************************************
- * SEARCH
- *****************************************************************************/
-/*
- * Return the only value that associated with input key
- * This method is used for point query
- * @return : true means key exists
- */
-bool BPlusTree::GetValue(const GenericKey *key, std::vector<RowId> &result, Txn *Txn) {
-  // 如果B+树为空，返回false。
+// Search and retrieve the value associated with the given key
+bool BPlusTree::GetValue(const GenericKey *key, std::vector<RowId> &result, Txn *transaction) {
+  // Return false if the B+ tree is empty
   if(IsEmpty()) return false;
 
-  // 找到包含该键的叶子页面。
+  // Find the leaf page containing the key
   auto *page = FindLeafPage(key, root_page_id_, false);
 
-  // 获取叶子页面的数据。
-  auto node = reinterpret_cast<LeafPage  *> (page->GetData());
+  // Get the leaf page data
+  auto node = reinterpret_cast<LeafPage *>(page->GetData());
 
-  // 在叶子页面中查找该键的值。
-  RowId val;
-  if(node->Lookup(key, val, processor_)){
-    // 如果找到，添加到结果向量中。
-    result.push_back(val);
-
-    // 释放叶子页面的锁定，并返回true。
+  // Lookup the key in the leaf page
+  RowId value;
+  if(node->Lookup(key, value, processor_)){
+    // If found, add to the result and return true
+    result.push_back(value);
     buffer_pool_manager_->UnpinPage(node->GetPageId(), false);
     return true;
   }
 
-  // 如果未找到，释放叶子页面的锁定，并返回false。
+  // If not found, unpin the page and return false
   buffer_pool_manager_->UnpinPage(node->GetPageId(), false);
   return false;
 }
 
-/*****************************************************************************
- * INSERTION
- *****************************************************************************/
-/*
- * Insert constant key & value pair into b+ tree
- * if current tree is empty, start new tree, update root page id and insert
- * entry, otherwise insert into leaf page.
- * @return: since we only support unique key, if user try to insert duplicate
- * keys return false, otherwise return true.
- */
+// Insert a key-value pair into the B+ tree
 bool BPlusTree::Insert(GenericKey *key, const RowId &value, Txn *transaction) {
-  // 如果B+树为空，创建新的树并插入键值对。
+  // If the tree is empty, start a new tree
   if(IsEmpty()) {
     StartNewTree(key, value);
     return true;
   } else {
-    // 否则，将键值对插入到合适的叶子页面中。
+    // Otherwise, insert into the appropriate leaf page
     return InsertIntoLeaf(key, value, transaction);
   }
 }
 
-/*
- * Insert constant key & value pair into an empty tree
- * User needs to first ask for new page from buffer pool manager(NOTICE: throw
- * an "out of memory" exception if returned value is nullptr), then update b+
- * tree's root page id and insert entry directly into leaf page.
- */
+// Start a new tree by inserting the first key-value pair
 void BPlusTree::StartNewTree(GenericKey *key, const RowId &value) {
-  // 从缓冲池管理器请求一个新的页面，并将其作为根页面
+  // Request a new page from the buffer pool manager
   auto new_page = buffer_pool_manager_->NewPage(root_page_id_);
-  // 如果无法分配新的页面，则抛出错误（内存不足）
-  ASSERT(new_page != nullptr, "out of memory");
-  // 将新页面的数据部分转换为叶子节点类型
+  // Check for memory allocation failure
+  ASSERT(new_page != nullptr, "Out of memory");
+
+  // Initialize the new page as a leaf node
   auto new_node = reinterpret_cast<LeafPage *>(new_page->GetData());
-  // 初始化叶子节点，设置其ID、无效的父节点ID、键的大小和最大尺寸
   new_node->Init(root_page_id_, INVALID_PAGE_ID, processor_.GetKeySize(), leaf_max_size_);
-  // 将第一个键值对插入到新创建的叶子节点中
   new_node->Insert(key, value, processor_);
-  // 解锁根页面，同时标记该页面已被修改
+
+  // Unpin the root page and update the root page ID
   buffer_pool_manager_->UnpinPage(root_page_id_, true);
-  // 更新根页面ID信息
-  UpdateRootPageId(1); // 1表示插入新的根页面
+  UpdateRootPageId(1); // 1 indicates new root insertion
 }
 
-
-/*
- * Insert constant key & value pair into leaf page
- * User needs to first find the right leaf page as insertion target, then look
- * through leaf page to see whether insert key exist or not. If exist, return
- * immediately, otherwise insert entry. Remember to deal with split if necessary.
- * @return: since we only support unique key, if user try to insert duplicate
- * keys return false, otherwise return true.
- */
+// Insert a key-value pair into a leaf page
 bool BPlusTree::InsertIntoLeaf(GenericKey *key, const RowId &value, Txn *transaction) {
-  // 查找包含给定键的叶子页面
+  // Find the leaf page where the key should be inserted
   auto page = reinterpret_cast<LeafPage *>(FindLeafPage(key, root_page_id_, false)->GetData());
-  // 检查该键是否已存在于叶子节点中
-  RowId val;
-  if (page->Lookup(key, val, processor_)) {
-    // 如果键存在，释放页面锁并返回 false 表示插入失败（键重复）
+  RowId existing_value;
+  if (page->Lookup(key, existing_value, processor_)) {
+    // If the key exists, return false
     buffer_pool_manager_->UnpinPage(page->GetPageId(), false);
     return false;
   } else {
-    // 如果键不存在，插入新的键值对到叶子节点中
+    // Otherwise, insert the key-value pair into the leaf page
     page->Insert(key, value, processor_);
-    // 检查插入后叶子节点是否超出其最大容量
+
+    // If the leaf page is full, split the page
     if (page->GetSize() >= page->GetMaxSize()) {
-      // 如果超出容量，执行页面分裂操作
       auto new_page = Split(page, transaction);
-      // 设置新叶子节点的下一个节点 ID 为当前叶子节点的下一个节点 ID
       new_page->SetNextPageId(page->GetNextPageId());
-      // 更新当前叶子节点的下一个节点 ID 为新分裂出的叶子节点的 ID
       page->SetNextPageId(new_page->GetPageId());
-      // 将分裂后的新键插入到父节点中
       InsertIntoParent(page, new_page->KeyAt(0), new_page, transaction);
-      // 释放新页面的锁定，并标记其已被修改
       buffer_pool_manager_->UnpinPage(new_page->GetPageId(), true);
     }
-    // 释放当前叶子节点的锁定，并标记其已被修改
+
+    // Unpin the current leaf page and return true
     buffer_pool_manager_->UnpinPage(page->GetPageId(), true);
     return true;
   }
 }
 
-
-/*
- * Split input page and return newly created page.
- * Using template N to represent either internal page or leaf page.
- * User needs to first ask for new page from buffer pool manager(NOTICE: throw
- * an "out of memory" exception if returned value is nullptr), then move half
- * of key & value pairs from input page to newly created page
- */
+// Split a full internal page and return the new page
 BPlusTreeInternalPage *BPlusTree::Split(InternalPage *node, Txn *transaction) {
   page_id_t new_page_id;
-  auto page = buffer_pool_manager_ ->NewPage(new_page_id);
-  ASSERT(page != nullptr, "out of memory");
-  auto new_node = reinterpret_cast<InternalPage *>(page);
-  new_node ->Init(new_page_id, node->GetParentPageId(), node->GetKeySize(), node->GetMaxSize());
+  auto page = buffer_pool_manager_->NewPage(new_page_id);
+  ASSERT(page != nullptr, "Out of memory");
+
+  auto new_node = reinterpret_cast<InternalPage *>(page->GetData());
+  new_node->Init(new_page_id, node->GetParentPageId(), node->GetKeySize(), node->GetMaxSize());
   node->MoveHalfTo(new_node, buffer_pool_manager_);
   return new_node;
 }
 
+// Split a full leaf page and return the new page
 BPlusTreeLeafPage *BPlusTree::Split(LeafPage *node, Txn *transaction) {
   page_id_t new_page_id;
   auto page = buffer_pool_manager_->NewPage(new_page_id);
-  ASSERT(page != nullptr, "out of memory");
-  auto new_node = reinterpret_cast<LeafPage *>(page);
-  new_node->Init(new_page_id, node->GetParentPageId(), node->GetKeySize(),node->GetMaxSize());
+  ASSERT(page != nullptr, "Out of memory");
+
+  auto new_node = reinterpret_cast<LeafPage *>(page->GetData());
+  new_node->Init(new_page_id, node->GetParentPageId(), node->GetKeySize(), node->GetMaxSize());
   node->MoveHalfTo(new_node);
   return new_node;
 }
+
 
 /*
  * Insert key & value pair into internal page after split
@@ -240,168 +197,168 @@ BPlusTreeLeafPage *BPlusTree::Split(LeafPage *node, Txn *transaction) {
  */
 void BPlusTree::InsertIntoParent(BPlusTreePage *old_node, GenericKey *key, BPlusTreePage *new_node,
                                  Txn *transaction) {
-  if(old_node -> IsRootPage()){
-    auto page = buffer_pool_manager_ ->NewPage(root_page_id_);
-    ASSERT(page != nullptr, "out of memory");
-    auto slib = reinterpret_cast <InternalPage *> (page -> GetData());
-    slib ->Init(root_page_id_, INVALID_PAGE_ID, processor_.GetKeySize(),internal_max_size_);
-    slib ->PopulateNewRoot(old_node -> GetPageId(), key, new_node -> GetPageId());
-    old_node ->SetParentPageId(root_page_id_);
-    new_node ->SetParentPageId(root_page_id_);
+  if(old_node->IsRootPage()){
+    // Create a new root page and populate it with old_node and new_node.
+    auto new_root_page = buffer_pool_manager_->NewPage(root_page_id_);
+    ASSERT(new_root_page != nullptr, "out of memory");
+    auto new_root = reinterpret_cast<InternalPage *>(new_root_page->GetData());
+    new_root->Init(root_page_id_, INVALID_PAGE_ID, processor_.GetKeySize(), internal_max_size_);
+    new_root->PopulateNewRoot(old_node->GetPageId(), key, new_node->GetPageId());
+
+    // Update parent pointers and root page ID.
+    old_node->SetParentPageId(root_page_id_);
+    new_node->SetParentPageId(root_page_id_);
     UpdateRootPageId(0);
-    buffer_pool_manager_ ->UnpinPage(root_page_id_, true);
-  }
-  else{
-    page_id_t par_id = old_node -> GetParentPageId();
-    auto fa = reinterpret_cast<InternalPage *> (buffer_pool_manager_ ->FetchPage(par_id) -> GetData());
-    fa ->InsertNodeAfter(old_node -> GetPageId(), key, new_node -> GetPageId());
-    if(fa -> GetSize() >= fa -> GetMaxSize()){
-      auto new_split = Split(fa, transaction);
-      InsertIntoParent(fa, new_split ->KeyAt(0), new_split, transaction);
-      buffer_pool_manager_ ->UnpinPage(new_split -> GetPageId(), true);
+
+    // Unpin the new root page.
+    buffer_pool_manager_->UnpinPage(root_page_id_, true);
+  } else {
+    // Insert new_node into the parent of old_node.
+    page_id_t parent_id = old_node->GetParentPageId();
+    auto parent_node = reinterpret_cast<InternalPage *>(buffer_pool_manager_->FetchPage(parent_id)->GetData());
+    parent_node->InsertNodeAfter(old_node->GetPageId(), key, new_node->GetPageId());
+
+    // Check if parent node exceeds maximum size and needs splitting.
+    if(parent_node->GetSize() >= parent_node->GetMaxSize()){
+      auto new_split = Split(parent_node, transaction);
+      InsertIntoParent(parent_node, new_split->KeyAt(0), new_split, transaction);
+      buffer_pool_manager_->UnpinPage(new_split->GetPageId(), true);
     }
-    buffer_pool_manager_ ->UnpinPage(par_id, true);
+
+    // Unpin the parent page after modification.
+    buffer_pool_manager_->UnpinPage(parent_id, true);
   }
 }
 
 /*****************************************************************************
  * REMOVE
  *****************************************************************************/
-/*
- * Delete key & value pair associated with input key
- * If current tree is empty, return immediately.
- * If not, User needs to first find the right leaf page as deletion target, then
- * delete entry from leaf page. Remember to deal with redistribute or merge if
- * necessary.
- */
 void BPlusTree::Remove(const GenericKey *key, Txn *transaction) {
-  if(IsEmpty())return;
-  auto leaf_node = reinterpret_cast<LeafPage *> (FindLeafPage(key, root_page_id_, false) -> GetData());
-  int siz = leaf_node -> GetSize();
-  int siz2 = leaf_node ->RemoveAndDeleteRecord(key, processor_);
-  if(siz > siz2){
+  if(IsEmpty()) return; // If tree is empty, return immediately.
+
+  // Find the leaf node containing the key for deletion.
+  auto leaf_node = reinterpret_cast<LeafPage *>(FindLeafPage(key, root_page_id_, false)->GetData());
+  int original_size = leaf_node->GetSize();
+  int new_size = leaf_node->RemoveAndDeleteRecord(key, processor_);
+
+  if(original_size > new_size) {
+    // Successful deletion, attempt coalesce or redistribution.
     CoalesceOrRedistribute(leaf_node, transaction);
-    buffer_pool_manager_ ->UnpinPage(leaf_node -> GetPageId(), true);
-  }
-  else{// Failed delete
-    buffer_pool_manager_ ->UnpinPage(leaf_node -> GetPageId(), false);
+    buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), true);
+  } else {
+    // Deletion failed, simply unpin the leaf node without marking modifications.
+    buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), false);
   }
 }
 
-/* todo
- * User needs to first find the sibling of input page. If sibling's size + input
- * page's size > page's max size, then redistribute. Otherwise, merge.
- * Using template N to represent either internal page or leaf page.
- * @return: true means target leaf page should be deleted, false means no
- * deletion happens
- */
 template <typename N>
 bool BPlusTree::CoalesceOrRedistribute(N *&node, Txn *transaction) {
   if(node->IsRootPage()) {
     return AdjustRoot(node);
-  }
-  else if (node->GetSize() >= node->GetMinSize()){
-    return false;
-  }
-  else {
+  } else if(node->GetSize() >= node->GetMinSize()) {
+    return false; // No further action needed if node size is within limits.
+  } else {
+    // Find parent and sibling nodes.
+    page_id_t parent_id = node->GetParentPageId();
+    auto parent_node = reinterpret_cast<InternalPage *>(buffer_pool_manager_->FetchPage(parent_id)->GetData());
+    int node_index = parent_node->ValueIndex(node->GetPageId());
+    int sibling_index = (node_index == 0) ? 1 : node_index - 1;
+    page_id_t sibling_id = parent_node->ValueAt(sibling_index);
+    auto sibling_node = reinterpret_cast<N *>(buffer_pool_manager_->FetchPage(sibling_id)->GetData());
+
+    // Decide whether to redistribute or coalesce based on sizes.
     bool res = false;
-    page_id_t par_id = node ->GetParentPageId();
-    auto par = reinterpret_cast <InternalPage *> (buffer_pool_manager_->FetchPage(par_id) -> GetData());
-    int index = par ->ValueIndex(node ->GetPageId());
-    int silb;
-    if(index == 0)silb = 1;
-    else silb = index - 1;
-    page_id_t silb_id = par ->ValueAt(silb);
-    auto sib_node = reinterpret_cast<N *> (buffer_pool_manager_ ->FetchPage(silb_id) -> GetData());
-    if(node->GetSize() + sib_node ->GetSize() >= node->GetMaxSize()) {
-      Redistribute(sib_node, node, index);
-      res = false;
+    if(node->GetSize() + sibling_node->GetSize() >= node->GetMaxSize()) {
+      Redistribute(sibling_node, node, sibling_index);
+      res = false; // No deletion needed after redistribution.
     } else {
-      Coalesce(sib_node, node, par, index);
-      res = true;
+      Coalesce(sibling_node, node, parent_node, sibling_index, transaction);
+      res = true; // Deletion needed after coalescing.
     }
-    buffer_pool_manager_->UnpinPage(par_id, true);
-    buffer_pool_manager_->UnpinPage(silb_id, true);
+
+    // Unpin pages after operations.
+    buffer_pool_manager_->UnpinPage(parent_id, true);
+    buffer_pool_manager_->UnpinPage(sibling_id, true);
     return res;
   }
 }
 
-/*
- * Move all the key & value pairs from one page to its sibling page, and notify
- * buffer pool manager to delete this page. Parent page must be adjusted to
- * take info of deletion into account. Remember to deal with coalesce or
- * redistribute recursively if necessary.
- * Using template N to represent either internal page or leaf page.
- * @param   neighbor_node      sibling page of input "node"
- * @param   node               input from method coalesceOrRedistribute()
- * @param   parent             parent page of input "node"
- * @return  true means parent node should be deleted, false means no deletion happened
- */
 bool BPlusTree::Coalesce(LeafPage *&neighbor_node, LeafPage *&node, InternalPage *&parent, int index,
                          Txn *transaction) {
-  int silb;
-  if(index == 0)silb = 1;
-  else silb = index - 1;
-  if(index < silb) {
-    neighbor_node ->MoveAllTo(node);
-    node ->SetNextPageId(neighbor_node->GetNextPageId());
-    parent ->Remove(silb);
+  // Determine which sibling to merge with based on index.
+  int sibling_index = (index == 0) ? 1 : index - 1;
+
+  if(index < sibling_index) {
+    // Merge node into neighbor_node.
+    neighbor_node->MoveAllTo(node);
+    node->SetNextPageId(neighbor_node->GetNextPageId());
+    parent->Remove(sibling_index);
   } else {
-    node ->MoveAllTo(neighbor_node);
-    neighbor_node ->SetNextPageId(node->GetNextPageId());
-    parent ->Remove(index);
+    // Merge neighbor_node into node.
+    node->MoveAllTo(neighbor_node);
+    neighbor_node->SetNextPageId(node->GetNextPageId());
+    parent->Remove(index);
   }
+
+  // Check if parent node needs further coalescing or redistribution.
   return CoalesceOrRedistribute(parent, transaction);
 }
 
 bool BPlusTree::Coalesce(InternalPage *&neighbor_node, InternalPage *&node, InternalPage *&parent, int index,
                          Txn *transaction) {
-  int silb;
-  if(index == 0)silb = 1;
-  else silb = index - 1;
-  if(index < silb) {
-    neighbor_node->MoveAllTo(node, parent->KeyAt(silb), buffer_pool_manager_);
-    parent->Remove(silb);
+  // Determine which sibling to merge with based on index.
+  int sibling_index = (index == 0) ? 1 : index - 1;
+
+  if(index < sibling_index) {
+    // Merge node into neighbor_node.
+    neighbor_node->MoveAllTo(node, parent->KeyAt(sibling_index), buffer_pool_manager_);
+    parent->Remove(sibling_index);
   } else {
+    // Merge neighbor_node into node.
     node->MoveAllTo(neighbor_node, parent->KeyAt(index), buffer_pool_manager_);
     parent->Remove(index);
   }
+
+  // Check if parent node needs further coalescing or redistribution.
   return CoalesceOrRedistribute(parent, transaction);
 }
 
-/*
- * Redistribute key & value pairs from one page to its sibling page. If index ==
- * 0, move sibling page's first key & value pair into end of input "node",
- * otherwise move sibling page's last key & value pair into head of input
- * "node".
- * Using template N to represent either internal page or leaf page.
- * @param   neighbor_node      sibling page of input "node"
- * @param   node               input from method coalesceOrRedistribute()
- */
 void BPlusTree::Redistribute(LeafPage *neighbor_node, LeafPage *node, int index) {
-  auto par = reinterpret_cast<InternalPage *> (buffer_pool_manager_ ->FetchPage(node -> GetParentPageId()) -> GetData());
-  if(index == 0){
-    neighbor_node ->MoveFirstToEndOf(node);
-    par ->SetKeyAt(index + 1, neighbor_node ->KeyAt(0));
+  // Fetch parent page for adjustments.
+  auto parent = reinterpret_cast<InternalPage *>(buffer_pool_manager_->FetchPage(node->GetParentPageId())->GetData());
+
+  if(index == 0) {
+    // Move first entry of neighbor_node to end of node.
+    neighbor_node->MoveFirstToEndOf(node);
+    parent->SetKeyAt(index + 1, neighbor_node->KeyAt(0));
+  } else {
+    // Move last entry of neighbor_node to front of node.
+    neighbor_node->MoveLastToFrontOf(node);
+    parent->SetKeyAt(index, node->KeyAt(0));
   }
-  else{
-    neighbor_node ->MoveLastToFrontOf(node);
-    par ->SetKeyAt(index, node ->KeyAt(0));
-  }
-  buffer_pool_manager_->UnpinPage(par -> GetPageId(), true);
+
+  // Unpin parent page after modifications.
+  buffer_pool_manager_->UnpinPage(parent->GetPageId(), true);
 }
+
 void BPlusTree::Redistribute(InternalPage *neighbor_node, InternalPage *node, int index) {
-  auto par = reinterpret_cast<InternalPage *> (buffer_pool_manager_ ->FetchPage(node -> GetParentPageId()) -> GetData());
-  if(index == 0){
-    neighbor_node ->MoveFirstToEndOf(node, par ->KeyAt(1), buffer_pool_manager_);
-    par ->SetKeyAt(index + 1, neighbor_node ->KeyAt(0));
+  // Fetch parent page for adjustments.
+  auto parent = reinterpret_cast<InternalPage *>(buffer_pool_manager_->FetchPage(node->GetParentPageId())->GetData());
+
+  if(index == 0) {
+    // Move first entry of neighbor_node to end of node.
+    neighbor_node->MoveFirstToEndOf(node, parent->KeyAt(1), buffer_pool_manager_);
+    parent->SetKeyAt(index + 1, neighbor_node->KeyAt(0));
+  } else {
+    // Move last entry of neighbor_node to front of node.
+    neighbor_node->MoveLastToFrontOf(node, parent->KeyAt(index), buffer_pool_manager_);
+    parent->SetKeyAt(index, node->KeyAt(0));
   }
-  else{
-    neighbor_node ->MoveLastToFrontOf(node, par ->KeyAt(index), buffer_pool_manager_);
-    par ->SetKeyAt(index, node ->KeyAt(0));
-  }
-  buffer_pool_manager_->UnpinPage(par -> GetPageId(), true);
+
+  // Unpin parent page after modifications.
+  buffer_pool_manager_->UnpinPage(parent->GetPageId(), true);
 }
+
 /*
  * Update root page if necessary
  * NOTE: size of root page can be less than min size and this method is only

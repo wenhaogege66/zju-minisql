@@ -10,7 +10,7 @@ static constexpr int INVALID_TXN_ID = -1;    // invalid recovery id
 static constexpr int INVALID_LSN = -1;       // invalid log sequence number
 
 static constexpr int META_PAGE_ID = 0;          // physical page id of the disk file meta info
-static constexpr int CATALOG_META_PAGE_ID = 0;  // logical page id of the catalog meta data
+static constexpr int CATALOG_META_PAGE_ID = 0;  // logical page id of the catalog1 meta data
 static constexpr int INDEX_ROOTS_PAGE_ID = 1;   // logical page id of the index roots
 
 static constexpr int PAGE_SIZE = 4096;                  // size of a data page in byte
