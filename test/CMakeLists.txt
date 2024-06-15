@@ -22,7 +22,7 @@ foreach (test_source ${MINISQL_TEST_SOURCES})
             PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test"
             COMMAND ${test_name}
-            )
+    )
 
     # Add the test under CTest.
     add_test(${test_name} ${CMAKE_BINARY_DIR}/test/${test_name} --gtest_color=yes

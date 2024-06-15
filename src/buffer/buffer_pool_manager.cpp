@@ -26,13 +26,6 @@ BufferPoolManager::~BufferPoolManager() {
  * TODO: Student Implement
  */
 Page *BufferPoolManager::FetchPage(page_id_t page_id) {
-  // 1.     Search the page table for the requested page (P).
-  // 1.1    If P exists, pin it and return it immediately.
-  // 1.2    If P does not exist, find a replacement page (R) from either the free list or the replacer.
-  //        Note that pages are always found from the free list first.
-  // 2.     If R is dirty, write it back to the disk.
-  // 3.     Delete R from the page table and insert P.
-  // 4.     Update P's metadata, read in the page content from disk, and then return a pointer to P.
   if(page_table_.find(page_id) != page_table_.end()) {
     replacer_->Pin(page_table_[page_id]);
     pages_[page_table_[page_id]].pin_count_++;

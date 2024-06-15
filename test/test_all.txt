@@ -1,0 +1,4 @@
+execfile "/mnt/d/study-at-zju/DB/pro/minisql/sql_gen/account00.txt";
+execfile "/mnt/d/study-at-zju/DB/pro/minisql/sql_gen/account01.txt";
+execfile "/mnt/d/study-at-zju/DB/pro/minisql/sql_gen/account02.txt";
+execfile "/mnt/d/study-at-zju/DB/pro/minisql/sql_gen/account03.txt";

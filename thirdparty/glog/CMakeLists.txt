@@ -68,11 +68,7 @@ set (CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 set (CMAKE_DEBUG_POSTFIX d)
 set (CMAKE_THREAD_PREFER_PTHREAD 1)
 
-# Check if GTest has been found already
-if (NOT TARGET GTest::gtest)
-  # Specify the path to GTest if necessary
-  find_package(GTest NO_MODULE)
-endif()
+find_package (GTest NO_MODULE)
 
 if (GTest_FOUND)
   set (HAVE_LIB_GTEST 1)
