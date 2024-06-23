@@ -52,19 +52,20 @@ void LeafPage::SetNextPageId(page_id_t next_page_id) {
  */
 int LeafPage::KeyIndex(const GenericKey *key, const KeyManager &KM) {
   if(GetSize() == 0)return 0;
-  int l = 0,r = GetSize() - 1;
-  while(l <= r){
-    int mid = (l + r) / 2;
-    int cmp = KM.CompareKeys(key, KeyAt(mid));
-    if(cmp == 0)return mid;
-    else if(cmp > 0){
-      l = mid + 1;
-    }
-    else {
-      r = mid - 1;
+  int left = 0;
+  int right = GetSize()-1;
+  while(left<=right){
+    int middle = (left+right) / 2;
+    int cmp = KM.CompareKeys(key, KeyAt(middle));
+    if(cmp == 0){
+      return middle;
+    }else if(cmp > 0){
+      left = middle + 1;
+    }else {
+      right = middle - 1;
     }
   }
-  return r + 1;
+  return right + 1;
 }
 
 /*
@@ -122,19 +123,20 @@ int LeafPage::Insert(GenericKey *key, const RowId &value, const KeyManager &KM) 
 /*
  * Remove half of key & value pairs from this page to "recipient" page
  */
-void LeafPage::MoveHalfTo(LeafPage *recipient){
-  int half = GetSize() / 2;
-  recipient ->CopyNFrom(PairPtrAt(GetSize() - half), half);
-  IncreaseSize(-half);
+void LeafPage::MoveHalfTo(LeafPage *recipient) {
+  int   moved=GetSize()/2;
+  recipient->CopyNFrom(PairPtrAt(GetSize()-moved),moved);
+  SetSize(GetSize()-moved);
+  //recipient->SetNextPageId(GetNextPageId());
+  //SetNextPageId(recipient->GetPageId());
 }
 
 /*
  * Copy starting from items, and copy {size} number of elements into me.
  */
 void LeafPage::CopyNFrom(void *src, int size) {
-  int siz = GetSize();
-  PairCopy(PairPtrAt(siz), src, size);
-  IncreaseSize(size);
+  PairCopy(PairPtrAt(GetSize()),src,size);
+  SetSize(GetSize()+size);
 }
 
 /*****************************************************************************
@@ -151,7 +153,7 @@ bool LeafPage::Lookup(const GenericKey *key, RowId &value, const KeyManager &KM)
     value = ValueAt(index);
     return true;
   }
-  else return false;
+  return false;
 }
 
 /*****************************************************************************
@@ -182,7 +184,8 @@ int LeafPage::RemoveAndDeleteRecord(const GenericKey *key, const KeyManager &KM)
  * to update the next_page id in the sibling page
  */
 void LeafPage::MoveAllTo(LeafPage *recipient) {
-  recipient -> CopyNFrom(PairPtrAt(0), GetSize());
+  recipient->CopyNFrom(PairPtrAt(0),GetSize());
+  //recipient->SetNextPageId(GetNextPageId());
   SetSize(0);
 }
 
@@ -197,7 +200,7 @@ void LeafPage::MoveFirstToEndOf(LeafPage *recipient) {
   if(GetSize() <= 0)return;
   recipient -> CopyLastFrom(KeyAt(0), ValueAt(0));
   PairCopy(PairPtrAt(0), PairPtrAt(1), GetSize() - 1);
-  IncreaseSize(-1);
+  SetSize(GetSize()-1);
 }
 
 /*
@@ -225,7 +228,7 @@ void LeafPage::MoveLastToFrontOf(LeafPage *recipient) {
  */
 void LeafPage::CopyFirstFrom(GenericKey *key, const RowId value) {
   PairCopy(PairPtrAt(1), PairPtrAt(0), GetSize());
-  SetValueAt(0, value);
-  SetKeyAt(0, key);
-  IncreaseSize(1);
+  SetSize(GetSize()+1);
+  SetKeyAt(0,key);
+  SetValueAt(0,value);
 }

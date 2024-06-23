@@ -18,12 +18,12 @@
  * Including set page type, set current size, set page id, set parent id and set
  * max page size
  */
-void InternalPage::Init(page_id_t page_id, page_id_t parent_id, int key_size, int max_size) {
+void InternalPage::Init(page_id_t page_id, page_id_t parent_id, int key_size, int max_size){
   SetPageId(page_id);
   SetParentPageId(parent_id);
-  SetMaxSize(max_size);
-  SetKeySize(key_size);
   SetPageType(IndexPageType::INTERNAL_PAGE);
+  SetKeySize(key_size);
+  SetMaxSize(max_size);
   SetSize(0);
 }
 /*
@@ -71,19 +71,21 @@ void InternalPage::PairCopy(void *dest, void *src, int pair_num) {
  * 用了二分查找
  */
 page_id_t InternalPage::Lookup(const GenericKey *key, const KeyManager &KM) {
-  int l = 1,r = GetSize() - 1;
-  while(l <= r){
-    int mid = (l + r) / 2;
-    int cmp = KM.CompareKeys(key, KeyAt(mid));
-    if(cmp == 0)return ValueAt(mid);
-    else if(cmp > 0){
-      l = mid + 1;
+  int right=GetSize()-1;
+  int left=1;
+  while(right-left>=0){
+    int   middle=(left+right)/2;
+    if(KM.CompareKeys(key,KeyAt(middle))==0){
+      return  ValueAt(middle);
     }
-    else {
-      r = mid - 1;
+    if(KM.CompareKeys(key,KeyAt(middle))>0){
+      left=middle+1;
+    }
+    if(KM.CompareKeys(key,KeyAt(middle))<0){
+      right=middle-1;
     }
   }
-  return ValueAt(l - 1);
+  return ValueAt(left-1);
 }
 
 /*****************************************************************************
@@ -96,10 +98,10 @@ page_id_t InternalPage::Lookup(const GenericKey *key, const KeyManager &KM) {
  * NOTE: This method is only called within InsertIntoParent()(b_plus_tree.cpp)
  */
 void InternalPage::PopulateNewRoot(const page_id_t &old_value, GenericKey *new_key, const page_id_t &new_value) {
+  SetKeyAt(1,new_key);
+  SetValueAt(0,old_value);
+  SetValueAt(1,new_value);
   SetSize(2);
-  SetValueAt(0, old_value);
-  SetValueAt(1, new_value);
-  SetKeyAt(1, new_key);
 }
 
 /*
@@ -146,6 +148,7 @@ void InternalPage::CopyNFrom(void *src, int size, BufferPoolManager *buffer_pool
     page ->SetParentPageId(GetPageId());
     buffer_pool_manager ->UnpinPage(page_id, true);
   }
+  //update their parent
 }
 
 /*****************************************************************************
@@ -157,8 +160,8 @@ void InternalPage::CopyNFrom(void *src, int size, BufferPoolManager *buffer_pool
  * NOTE: store key&value pair continuously after deletion
  */
 void InternalPage::Remove(int index) {
-    PairCopy(PairPtrAt(index), PairPtrAt(index + 1), GetSize() - index - 1);
-    IncreaseSize(-1);
+  PairCopy(PairPtrAt(index), PairPtrAt(index + 1), GetSize() - index - 1);
+  IncreaseSize(-1);
 }
 
 /*

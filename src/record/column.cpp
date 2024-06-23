@@ -72,14 +72,10 @@ uint32_t Column::SerializeTo(char *buf) const {
  */
 uint32_t Column::GetSerializedSize() const {
   uint32_t op = 0;
-  op += sizeof(uint32_t);
-  op += sizeof(uint32_t);
+  op += sizeof(uint32_t)*4;
   op += name_.length();
   op += sizeof(TypeId);
-  op += sizeof(uint32_t);
-  op += sizeof(uint32_t);
-  op += sizeof(bool);
-  op += sizeof(bool);
+  op += sizeof(bool)*2;
   return op;
 }
 
